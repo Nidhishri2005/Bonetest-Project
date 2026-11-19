@@ -1,14 +1,9 @@
-"""Ablation study module for architectural and preprocessing design choices.
+"""[SIMULATED] Ablation study module for architectural and preprocessing design choices.
 
-Evaluates 4 critical ablation axes:
-1. Demographic Conditioning: Biological sex conditioning (On vs. Off)
-2. Anatomical Preprocessing: Otsu Hand ROI crop (On vs. Off)
-3. Input Resolution: 384x384 vs. 512x512
-4. Feature Backbone: EfficientNet-B3 vs. ResNet-50 vs. ResNet-18
-
-Protocol Guarantee:
-- All ablation experiments evaluate strictly on the validation partition (`val_manifest.csv`).
-- The frozen test set (`test_manifest.csv`) is preserved for final evaluation and touched only once.
+WARNING — SIMULATED REPORT TEMPLATE:
+When invoked by `ml/eval/run_evaluation.py` with hardcoded metrics, the resulting
+`reports/ablation_study_report.json` and `reports/ablation_study_report.md` contain
+SIMULATED placeholder numbers and must NOT be presented as measured experimental results.
 """
 
 from __future__ import annotations

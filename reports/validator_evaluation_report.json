@@ -1,5 +1,7 @@
 {
-  "model_architecture": "ResNet18-Validator",
+  "_simulated_warning": "SIMULATED / SYNTHETIC PHANTOM REPORT: Evaluated on 108 synthetic OpenCV drawings from validator_dataset.py (0% real RSNA radiographs). Superseded by real-data One-Class OOD kNN evaluation in reports/validator_evaluation_report.md.",
+  "is_simulated": true,
+  "model_architecture": "ResNet18-Validator (LEGACY 6-CLASS SYNTHETIC)",
   "checkpoint": "hand_validator_best.pt",
   "test_samples": 108,
   "test_loss": 0.1693,

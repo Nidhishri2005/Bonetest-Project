@@ -81,7 +81,7 @@ class PredictionResponse(BaseModel):
     uncertainty_lower_months: Optional[float] = None
     uncertainty_upper_months: Optional[float] = None
     uncertainty_interval_months: Optional[float] = None
-    conformal_coverage_pct: Optional[float] = None
+    uncertainty_note: Optional[str] = None
     inference_engine: Optional[str] = None
     validation: Optional[ValidationDetails] = None
 

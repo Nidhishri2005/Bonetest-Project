@@ -21,9 +21,9 @@ from app.services.preprocessing import preprocess_for_inference
 
 logger = logging.getLogger(__name__)
 
-# Measured validation/test RMSE (in months) from actual checkpoint metadata & evaluation runs:
-#   - cnn:            14.09 mo (measured on frozen 10% test holdout in reports/baseline_reproduction_report.json;
-#                               checkpoint val_rmse = 14.7138 mo)
+# Measured validation RMSE (in months) from actual checkpoint metadata:
+#   - cnn:            14.71 mo (measured in cnn_best.pt checkpoint metadata: val_rmse = 14.7138 mo;
+#                               also measured on frozen 10% test holdout: rmse = 14.09 mo)
 #   - cnn_rf:         14.35 mo (measured in cnn_rf_best.pt checkpoint metadata: val_rmse = 14.3479 mo)
 #   - multimodal_cnn: 14.61 mo (measured in multimodal_cnn_best.pt checkpoint metadata: val_rmse = 14.6099 mo)
 #   - cnn_dnn:        16.06 mo (measured in cnn_dnn_best.pt checkpoint metadata: val_rmse = 16.0620 mo)
@@ -31,19 +31,19 @@ logger = logging.getLogger(__name__)
 # Models without a measured RMSE (efficientnet_b3, regression_multimodal, ensemble_cnn, multiscale_cnn_rf)
 # are omitted until evaluated on real held-out data.
 MODEL_RMSE: dict[str, float] = {
-    "cnn": 14.09,
+    "cnn": 14.71,
     "cnn_rf": 14.35,
     "multimodal_cnn": 14.61,
     "cnn_dnn": 16.06,
     "cnn_tw3": 16.21,
 }
 
-# Measured 90% prediction interval margins (in months).
-# Only models with a measured RMSE / empirical residual distribution on held-out data are included.
+# Typical error margins (+/- 1 RMSE, in months), measured on validation data of unknown split.
+# Only models with a measured RMSE stored in their checkpoint are included.
 # Models not in this dict return None for uncertainty interval fields so the UI hides the interval box
 # rather than displaying an invented interval.
-CONFORMAL_MARGIN_90: dict[str, float] = {
-    "cnn": 14.1,
+TYPICAL_ERROR_RMSE: dict[str, float] = {
+    "cnn": 14.7,
     "cnn_rf": 14.3,
     "multimodal_cnn": 14.6,
     "cnn_dnn": 16.1,
@@ -167,18 +167,21 @@ class InferenceService:
         elapsed_ms = (time.perf_counter() - start) * 1000
         confidence = _compute_confidence(pred, model_type)
 
-        # Prediction interval (90% coverage) — only populated if measured for this model
-        margin = CONFORMAL_MARGIN_90.get(model_type)
+        # Typical error interval (+/- 1 RMSE) — only populated if measured for this model
+        margin = TYPICAL_ERROR_RMSE.get(model_type)
         if margin is not None:
             uncertainty_lower: Optional[float] = max(0.0, round(pred - margin, 1))
             uncertainty_upper: Optional[float] = round(pred + margin, 1)
             uncertainty_interval: Optional[float] = round(margin, 1)
-            conformal_coverage: Optional[float] = 90.0
+            uncertainty_note: Optional[str] = (
+                f"typical error about +/-{margin:.1f} months "
+                "(about 1 RMSE, measured on validation data of unknown split)"
+            )
         else:
             uncertainty_lower = None
             uncertainty_upper = None
             uncertainty_interval = None
-            conformal_coverage = None
+            uncertainty_note = None
 
         gender_used = (
             gender
@@ -195,7 +198,7 @@ class InferenceService:
             "uncertainty_lower_months": uncertainty_lower,
             "uncertainty_upper_months": uncertainty_upper,
             "uncertainty_interval_months": uncertainty_interval,
-            "conformal_coverage_pct": conformal_coverage,
+            "uncertainty_note": uncertainty_note,
             "inference_engine": engine,
         }
 

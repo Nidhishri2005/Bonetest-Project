@@ -1,12 +1,10 @@
-"""Dataset generation, loading, and preprocessing for the Hand X-Ray Validator.
+"""[SIMULATED / SYNTHETIC FIXTURES] Synthetic OpenCV phantom generator for unit tests only.
 
-Supports 6 distinct classes:
-0: valid_pediatric_hand_xray
-1: non_hand_xray
-2: normal_photograph
-3: animal_photograph
-4: document_or_screenshot
-5: other_unrelated
+WARNING — SYNTHETIC PHANTOMS ONLY:
+This module generates synthetic OpenCV geometric drawings (`generate_hand_xray_phantom`,
+`generate_non_hand_xray`, etc.). It is marked SIMULATED / legacy and must NEVER be used to
+train or evaluate production image validators (which now use real RSNA radiographs via
+One-Class OOD kNN in `ml/validator_ood.py`).
 """
 
 from __future__ import annotations

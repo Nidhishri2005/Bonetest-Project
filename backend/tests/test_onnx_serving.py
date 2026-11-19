@@ -137,7 +137,8 @@ class TestONNXServingIntegration(unittest.TestCase):
         self.assertIsNone(result["uncertainty_lower_months"])
         self.assertIsNone(result["uncertainty_upper_months"])
         self.assertIsNone(result["uncertainty_interval_months"])
-        self.assertIsNone(result["conformal_coverage_pct"])
+        self.assertIsNone(result["uncertainty_note"])
+        self.assertNotIn("conformal_coverage_pct", result)
         self.assertGreaterEqual(result["bone_age_months"], 0.0)
         self.assertLessEqual(result["bone_age_months"], 240.0)
 

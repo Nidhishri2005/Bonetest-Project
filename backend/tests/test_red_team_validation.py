@@ -143,12 +143,17 @@ class TestClinicalPipelineEndToEnd(unittest.TestCase):
         # Unmeasured models return None for interval rather than an invented interval
         self.assertIsNone(data["uncertainty_lower_months"])
         self.assertIsNone(data["uncertainty_upper_months"])
+        self.assertIsNone(data["uncertainty_note"])
+        self.assertNotIn("conformal_coverage_pct", data)
 
-        # Measured models (e.g. cnn) return their measured interval
+        # Measured models (e.g. cnn) return their measured +/- 1 RMSE interval and honest note
         cnn_data = self.inference.predict(self.hand_png, "cnn")
         self.assertIsNotNone(cnn_data["uncertainty_lower_months"])
         self.assertIsNotNone(cnn_data["uncertainty_upper_months"])
-        self.assertEqual(cnn_data["conformal_coverage_pct"], 90.0)
+        self.assertIn(
+            "typical error about +/-14.7 months (about 1 RMSE, measured on validation data of unknown split)",
+            cnn_data["uncertainty_note"],
+        )
         self.assertLessEqual(cnn_data["uncertainty_lower_months"], cnn_data["bone_age_months"])
         self.assertGreaterEqual(cnn_data["uncertainty_upper_months"], cnn_data["bone_age_months"])
 

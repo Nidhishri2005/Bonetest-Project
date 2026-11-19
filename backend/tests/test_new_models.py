@@ -174,7 +174,8 @@ class TestModelArchitectures(unittest.TestCase):
             self.assertIsNone(out["uncertainty_lower_months"])
             self.assertIsNone(out["uncertainty_upper_months"])
             self.assertIsNone(out["uncertainty_interval_months"])
-            self.assertIsNone(out["conformal_coverage_pct"])
+            self.assertIsNone(out["uncertainty_note"])
+            self.assertNotIn("conformal_coverage_pct", out)
 
     def test_registry_load_fails_loudly_on_state_dict_mismatch(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,16 +1,41 @@
-# Python virtual environment
+# Python virtual environments
 .venv/
 venv/
 env/
 
-# Python cache
+# Python cache & test/lint caches
 __pycache__/
 *.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Environment variables
+# Environment variables & secrets (preserve .env.example templates)
 .env
+.env.*
+!.env.example
 
-# Downloaded external datasets
+# Logs and temporary files
+*.log
+*.tmp
+tmp/
+temp/
+*.bak
+*.backup
+
+# Jupyter temporary checkpoints
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Experiment tracking & temporary training outputs
+runs/
+wandb/
+mlruns/
+
+# Local datasets & downloaded external data
 data/validator_data/raw/
 data/validator_data/negatives/
 data/validator_data/validator_negatives.zip
+data/boneage-training-dataset/
+data/boneage-test-dataset/

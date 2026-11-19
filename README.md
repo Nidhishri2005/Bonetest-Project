@@ -22,17 +22,22 @@ A hardened, clinically-grounded pediatric bone age estimation platform built on 
        - Adult hand X-rays and camera photographs of physical X-ray films are untested unless added to `tests/validator/should_reject`.
    - **Stage 3 (Tissue Coverage w/ 5% Border Ignored)**: Central $90\% \times 90\%$ ROI (ignoring a 5% border on all sides), $[P_2, P_{98}]$ percentile contrast stretch + Otsu thresholding with connected components isolating hand anatomy ($0.03 \le \text{coverage} \le 0.98$).
 
-2. **Target Architecture (`EfficientNetB3SexFusion`)**:
-   - ImageNet-pretrained EfficientNet-B3 backbone with 384x384 letterboxed input.
-   - 32-dimensional biological sex embedding fusion providing physiologically accurate maturation curves (+1.33 mo MAE gain).
+2. **Target Architecture (`EfficientNetB3SexFusion`) & Legacy Baselines**:
+   - ImageNet-pretrained EfficientNet-B3 backbone with 384x384 letterboxed input and 32-dimensional biological sex embedding fusion.
    - Huber loss ($\delta=1.0$) on standardized age targets with AdamW cosine annealing schedule.
-   - **Test MAE: 6.00 months** (vs. legacy baseline **10.92 months**, $\Delta = -4.92$ mo, $p < 0.0001$).
-   - Catastrophic infant error (0–24 mo) reduced from **24.80 mo** down to **7.95 mo**.
+   - **Measured Baseline Benchmark (on Frozen 10% Stratified Test Split, $N = 1,259$):** Legacy `CNNBaseline` (`cnn_best.pt`) achieves **Test MAE = `10.92` months**, **Test RMSE = `14.09` months**, **Median AE = `9.19` months**, **$R^2 = 0.8801$** (see [`reports/baseline_reproduction_report.md`](file:///c:/bonetest/reports/baseline_reproduction_report.md)).
+   - **Measured Historical Validation Checkpoints ($N = 1,892$, unknown 15% validation split stored in `.pt` metadata):**
+     - `cnn_rf`: Val MAE = **`11.04` mo**, Val RMSE = **`14.35` mo**
+     - `cnn`: Val MAE = **`11.33` mo**, Val RMSE = **`14.71` mo**
+     - `multimodal_cnn`: Val MAE = **`11.39` mo**, Val RMSE = **`14.61` mo**
+     - `cnn_tw3`: Val MAE = **`12.47` mo**, Val RMSE = **`16.21` mo**
+     - `cnn_dnn`: Val MAE = **`12.53` mo**, Val RMSE = **`16.06` mo**
+   - *(Note: `efficientnet_b3`, `multiscale_cnn_rf`, `ensemble_cnn`, and `regression_multimodal` do not yet have measured test/validation metrics on the frozen split; earlier numbers in `ml/eval/run_evaluation.py`, `reports/comprehensive_evaluation_report.*`, and `reports/ablation_study_report.*` were generated from simulated `rng.normal` residuals and are explicitly marked **`[SIMULATED]`**.)*
 
-3. **ONNX Runtime CPU Serving & Conformal Uncertainty**:
+3. **ONNX Runtime CPU Serving & Typical Error Reporting**:
    - Exported to ONNX with dynamic batching; verified numerical parity ($\max |y_{\text{pt}} - y_{\text{ort}}| < 10^{-4}$).
    - Sub-100ms inference on standard CPUs using `CPUExecutionProvider`.
-   - Calibrated 90% conformal prediction uncertainty intervals ($\pm 8.2$ months).
+   - For models with measured validation RMSE, responses report: `"typical error about +/-X months (about 1 RMSE, measured on validation data of unknown split)"`. Models without a measured RMSE return no interval rather than an invented one.
 
 4. **Grad-CAM++ Explainability & Sanity Verification**:
    - Second- and third-order gradient weighting for heightened spatial sensitivity across multi-focal ossification centers (metacarpal heads, carpal clusters, distal radial epiphyses).
@@ -40,19 +45,17 @@ A hardened, clinically-grounded pediatric bone age estimation platform built on 
 
 ---
 
-## Architectural Comparison
+## Measured Model Benchmarks
 
-| Metric | Legacy CNN Baseline (`cnn_best.pt`) | Target Architecture (`EfficientNetB3SexFusion`) | Improvement ($\Delta$) |
-|---|---|---|---|
-| **Test MAE** | **10.92 months** [10.27, 11.60] | **6.00 months** [5.68, 6.33] | **-4.92 months** ($p < 0.0001$) |
-| **Test RMSE** | **14.09 months** [13.15, 14.98] | **7.60 months** [7.10, 8.12] | **-6.49 months** |
-| **Median AE** | **9.19 months** [8.43, 9.87] | **4.92 months** [4.51, 5.38] | **-4.27 months** |
-| **Within $\pm$ 6 Mo** | **34.5%** | **64.2%** | **+29.7%** |
-| **Within $\pm$ 12 Mo** | **63.3%** | **91.8%** | **+28.5%** |
-| **$R^2$ Score** | **0.8801** | **0.9658** | **+0.0857** |
-| **Bland-Altman Bias** | **+0.22 months** | **-0.08 months** | Clinical agreement |
-| **95% LoA Bounds** | **[-27.35, +27.79] months** | **[-14.98, +14.82] months** | ~1.8x narrower |
-| **90% Conformal Interval** | **$\pm 14.1$ months** | **$\pm 8.2$ months** | Tight, calibrated intervals |
+| Model ID | Split Evaluated | Sample Size ($N$) | Measured MAE (months) | Measured RMSE (months) | Source |
+|---|---|:---:|:---:|:---:|---|
+| **`cnn`** (`cnn_best.pt`) | Frozen 10% Stratified Test Split (`test_manifest.csv`) | `1,259` | **`10.92`** | **`14.09`** | Measured by `ml/eval/evaluate_baseline.py` (`reports/baseline_reproduction_report.json`) |
+| **`cnn_rf`** (`cnn_rf_best.pt` + `cnn_rf.joblib`) | Historical 15% Validation Split (unknown split) | `1,892` | **`11.04`** | **`14.35`** | Stored in `cnn_rf_best.pt` checkpoint metadata |
+| **`cnn`** (`cnn_best.pt`) | Historical 15% Validation Split (epoch 27, unknown split) | `1,892` | **`11.33`** | **`14.71`** | Stored in `cnn_best.pt` & `cnn_history.json` |
+| **`multimodal_cnn`** (`multimodal_cnn_best.pt`) | Historical 15% Validation Split (epoch 18, unknown split) | `1,892` | **`11.39`** | **`14.61`** | Stored in `multimodal_cnn_best.pt` & `multimodal_cnn_history.json` |
+| **`cnn_tw3`** (`cnn_tw3_best.pt`) | Historical 15% Validation Split (unknown split) | `1,892` | **`12.47`** | **`16.21`** | Stored in `cnn_tw3_best.pt` checkpoint metadata |
+| **`cnn_dnn`** (`cnn_dnn_best.pt`) | Historical 15% Validation Split (epoch 16, unknown split) | `1,892` | **`12.53`** | **`16.06`** | Stored in `cnn_dnn_best.pt` & `cnn_dnn_history.json` |
+| **`efficientnet_b3`**, **`multiscale_cnn_rf`**, **`ensemble_cnn`**, **`regression_multimodal`** | Not yet measured on frozen split | — | *Unmeasured* | *Unmeasured* | No interval shown in UI until measured |
 
 ---
 
@@ -113,12 +116,12 @@ The repository maintains an automated suite of **94 unit and regression tests** 
 - [Project Changelog](docs/CHANGELOG.md)
 - [Dataset Inventory & Re-Audit](docs/DATASET_INVENTORY.md)
 - [Audit & Architectural Plan](docs/REAUDIT.md)
-- [Baseline Reproduction Report](reports/baseline_reproduction_report.md)
-- [Ablation Study Report](reports/ablation_study_report.md)
-- [Comprehensive Statistical Evaluation Report](reports/comprehensive_evaluation_report.md)
-- [Image Validator Evaluation Report](reports/validator_evaluation_report.md)
-- [Adebayo Saliency Sanity Check Report](reports/gradcam_sanity_report.md)
-- [ONNX Runtime Parity Report](reports/onnx_export_report.md)
+- [Baseline Reproduction Report (Measured)](reports/baseline_reproduction_report.md)
+- [Image Validator Evaluation Report (Measured)](reports/validator_evaluation_report.md)
+- [Adebayo Saliency Sanity Check Report (Measured)](reports/gradcam_sanity_report.md)
+- [ONNX Runtime Parity Report (Measured)](reports/onnx_export_report.md)
+- [[SIMULATED] Ablation Study Report](reports/ablation_study_report.md)
+- [[SIMULATED] Comprehensive Statistical Evaluation Report](reports/comprehensive_evaluation_report.md)
 
 ---
 

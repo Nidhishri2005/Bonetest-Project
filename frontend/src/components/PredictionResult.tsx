@@ -123,12 +123,14 @@ export default function PredictionResultCard({
         </p>
       </div>
 
-      {/* Conformal Uncertainty Interval */}
+      {/* Typical Error (+/- 1 RMSE) Interval */}
       {result.uncertainty_lower_months != null && result.uncertainty_upper_months != null && (
         <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-3">
           <div className="flex items-center justify-between text-xs font-semibold text-sky-900">
-            <span>Clinical Uncertainty ({result.conformal_coverage_pct ?? 90}% Conformal Interval)</span>
-            <span>±{result.uncertainty_interval_months} mo</span>
+            <span>
+              {result.uncertainty_note ??
+                `typical error about +/-${result.uncertainty_interval_months} months (about 1 RMSE, measured on validation data of unknown split)`}
+            </span>
           </div>
           <div className="mt-1 flex items-baseline gap-2 text-sky-800">
             <span className="text-base font-bold">

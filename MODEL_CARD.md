@@ -109,31 +109,33 @@ Execute Model Inference & Grad-CAM++ Explainability
 
 ## 5. Quantitative Evaluation & Comparative Benchmarks
 
-Evaluated on the frozen, deduplicated test holdout partition ($N = 1,259$ radiographs):
+### Measured Baseline Benchmark (Frozen 10% Stratified Test Split, $N = 1,259$)
 
-| Metric | Legacy CNN Baseline (`cnn_best.pt`) | Target Architecture (`EfficientNetB3SexFusion`) | Improvement ($\Delta$) |
-|---|---|---|---|
-| **Mean Absolute Error (MAE)** | **10.92 months** [10.27, 11.60] | **6.00 months** [5.68, 6.33] | **-4.92 months** ($p < 0.0001$) |
-| **Root Mean Squared Error (RMSE)** | **14.09 months** [13.15, 14.98] | **7.60 months** [7.10, 8.12] | **-6.49 months** |
-| **Median Absolute Error (MedAE)** | **9.19 months** [8.43, 9.87] | **4.92 months** [4.51, 5.38] | **-4.27 months** |
-| **Predictions Within $\pm 6$ Months** | **34.5%** [31.9%, 37.1%] | **64.2%** [61.5%, 66.8%] | **+29.7%** |
-| **Predictions Within $\pm 12$ Months** | **63.3%** [60.6%, 66.0%] | **91.8%** [90.1%, 93.3%] | **+28.5%** |
-| **Coefficient of Determination ($R^2$)**| **0.8801** [0.8624, 0.8958] | **0.9658** [0.9592, 0.9715] | **+0.0857** |
-| **Bland-Altman Mean Bias** | **+0.22 months** | **-0.08 months** | Unbiased clinical agreement |
-| **Bland-Altman 95% Agreement Limits**| **[-27.35, +27.79] months** | **[-14.98, +14.82] months** | ~1.8x narrower limits |
-| **90% Conformal Uncertainty Margin** | **$\pm 14.1$ months** | **$\pm 8.2$ months** | Tight, calibrated intervals |
+Evaluated by `ml/eval/evaluate_baseline.py` on `test_manifest.csv` ($N = 1,259$):
 
-### Demographic & Cohort Subgroup Fairness
+| Metric | Legacy CNN Baseline (`cnn_best.pt`) | Source |
+|---|---|---|
+| **Mean Absolute Error (MAE)** | **10.92 months** | `reports/baseline_reproduction_report.json` |
+| **Root Mean Squared Error (RMSE)** | **14.09 months** | `reports/baseline_reproduction_report.json` |
+| **Median Absolute Error (MedAE)** | **9.19 months** | `reports/baseline_reproduction_report.json` |
+| **Predictions Within $\pm 6$ Months** | **34.5%** | `reports/baseline_reproduction_report.json` |
+| **Predictions Within $\pm 12$ Months** | **63.3%** | `reports/baseline_reproduction_report.json` |
+| **Coefficient of Determination ($R^2$)** | **0.8801** | `reports/baseline_reproduction_report.json` |
+| **Typical Error Margin ($\approx 1$ RMSE, historical val split)** | **$\pm 14.7$ months** (`val_rmse = 14.71`) | `cnn_best.pt` checkpoint metadata |
 
-| Age Cohort / Subgroup | Age Range (mo) | Baseline MAE | Target MAE | Gain |
-|---|---|---|---|---|
-| **Infant Cohort** | 0 – 24 mo | 24.80 mo | 7.95 mo | **-16.85 mo** (catastrophic failure resolved) |
-| **Early Childhood** | 24 – 72 mo | 9.43 mo | 5.34 mo | **-4.09 mo** |
-| **Middle Childhood** | 72 – 120 mo | 10.48 mo | 5.78 mo | **-4.70 mo** |
-| **Adolescent** | 120 – 168 mo | 10.93 mo | 6.12 mo | **-4.81 mo** |
-| **Post-Pubertal** | 168+ mo | 11.84 mo | 6.81 mo | **-5.03 mo** |
-| **Male Patients** ($N=681$) | All | 11.33 mo | 6.11 mo | **-5.22 mo** |
-| **Female Patients** ($N=578$) | All | 10.43 mo | 5.87 mo | **-4.56 mo** |
+### Legacy Baseline Subgroup Breakdown (`cnn_best.pt`, $N = 1,259$ Frozen Test Split)
+
+| Age Cohort / Subgroup | Age Range (mo) | Sample Count | Legacy CNN Baseline MAE |
+|---|---|:---:|:---:|
+| **Infant Cohort** | 0 – 24 mo | 9 | 24.80 mo |
+| **Early Childhood** | 24 – 72 mo | 124 | 9.43 mo |
+| **Middle Childhood** | 72 – 120 mo | 295 | 10.48 mo |
+| **Adolescent** | 120 – 168 mo | 632 | 10.93 mo |
+| **Post-Pubertal** | 168+ mo | 199 | 11.84 mo |
+| **Male Patients** | All | 681 | 11.33 mo |
+| **Female Patients** | All | 578 | 10.43 mo |
+
+> **Note on Simulated Reports & Unmeasured Models:** `efficientnet_b3`, `multiscale_cnn_rf`, `ensemble_cnn`, and `regression_multimodal` do not yet have measured test-set evaluations on `test_manifest.csv` ($N=1,259$). Earlier numbers (`6.00` / `6.12` mo MAE, `± 8.2` mo interval) in `ml/eval/run_evaluation.py`, `reports/comprehensive_evaluation_report.*`, and `reports/ablation_study_report.*` were generated from simulated `rng.normal` residuals and are explicitly marked **`[SIMULATED]`**. Unmeasured models return no prediction interval in the API/UI.
 
 ---
 

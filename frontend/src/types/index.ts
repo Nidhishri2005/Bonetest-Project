@@ -40,10 +40,10 @@ export interface PredictionResult {
   confidence: number;
   gender_used?: string | null;
   processing_time_ms: number;
-  uncertainty_lower_months?: number;
-  uncertainty_upper_months?: number;
-  uncertainty_interval_months?: number;
-  conformal_coverage_pct?: number;
+  uncertainty_lower_months?: number | null;
+  uncertainty_upper_months?: number | null;
+  uncertainty_interval_months?: number | null;
+  uncertainty_note?: string | null;
   inference_engine?: string;
   validation?: ValidationDetails;
 }

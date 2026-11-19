@@ -1,6 +1,8 @@
-# Phase 4 Ablation Study Report
+# [SIMULATED] Phase 4 Ablation Study Report
 
-**Evaluation Partition:** Validation Split (`val_manifest.csv`) — *Test set touched once rule strictly enforced.*
+> **WARNING — SIMULATED METRICS:** The values in this table (except `legacy_baseline_resnet18`, which was measured at MAE `10.92` mo / RMSE `14.09` mo in `reports/baseline_reproduction_report.json`) are hardcoded simulated numbers from `ml/eval/run_evaluation.py` and were **NOT** measured from trained model checkpoints.
+
+**Evaluation Partition:** Validation Split (`val_manifest.csv`) — *SIMULATED*
 
 | Configuration | Backbone | Resolution | ROI Crop | Sex Cond. | Params (M) | MAE (mo) | RMSE (mo) | $R^2$ | Within $\pm$6m (%) | Within $\pm$12m (%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
