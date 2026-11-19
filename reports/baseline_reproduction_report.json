@@ -1,0 +1,48 @@
+{
+  "model_name": "CNNBaseline (ResNet-18 Grayscale 512x512)",
+  "checkpoint": "C:\\Bonetest\\backend\\checkpoints\\cnn_best.pt",
+  "test_samples": 1259,
+  "overall_metrics": {
+    "mae_months": 10.92,
+    "rmse_months": 14.09,
+    "median_ae_months": 9.19,
+    "pct_within_6mo": 34.47,
+    "pct_within_12mo": 63.3,
+    "r2_score": 0.8801
+  },
+  "sex_stratified_mae": {
+    "male_mae_months": 11.33,
+    "female_mae_months": 10.43,
+    "male_count": 681,
+    "female_count": 578
+  },
+  "cohort_stratified_metrics": {
+    "0-24 mo": {
+      "count": 9,
+      "mae_months": 24.8
+    },
+    "24-72 mo": {
+      "count": 124,
+      "mae_months": 9.43
+    },
+    "72-120 mo": {
+      "count": 295,
+      "mae_months": 10.48
+    },
+    "120-168 mo": {
+      "count": 632,
+      "mae_months": 10.93
+    },
+    "168+ mo": {
+      "count": 199,
+      "mae_months": 11.84
+    }
+  },
+  "historical_comparison": {
+    "historical_reported_mae": 11.33,
+    "reproduced_test_mae": 10.92,
+    "discrepancy_months": -0.41,
+    "note": "Historical reported MAE was recorded on an ephemeral unseeded 15% validation split (epoch 27). This reproduced benchmark is evaluated strictly on the frozen 10% stratified test holdout."
+  },
+  "evaluation_duration_sec": 1162.65
+}

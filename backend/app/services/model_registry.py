@@ -33,15 +33,16 @@ class ModelRegistry:
     def checkpoint_path(self, model_type: str) -> Path:
         return self.settings.checkpoint_dir / f"{model_type}_best.pt"
 
-    def rf_path(self) -> Path:
-        return self.settings.rf_models_dir / "cnn_rf.joblib"
+    def rf_path(self, model_type: str = "cnn_rf") -> Path:
+        return self.settings.rf_models_dir / f"{model_type}.joblib"
 
     def is_checkpoint_available(self, model_type: str) -> bool:
         if model_type not in SUPPORTED_MODELS:
             return False
         if not self.checkpoint_path(model_type).exists():
             return False
-        if model_type == "cnn_rf" and not self.rf_path().exists():
+        meta = MODEL_REGISTRY.get(model_type, {})
+        if meta.get("wrapper") is not None and not self.rf_path(model_type).exists():
             return False
         return True
 
@@ -56,6 +57,8 @@ class ModelRegistry:
                     "requires_gender": meta["requires_gender"],
                     "supports_gradcam": meta["supports_gradcam"],
                     "checkpoint_available": self.is_checkpoint_available(model_id),
+                    "is_experimental": meta.get("is_experimental", False),
+                    "is_legacy": meta.get("is_legacy", False),
                 }
             )
         return result
@@ -80,18 +83,20 @@ class ModelRegistry:
 
         checkpoint = torch.load(ckpt_path, map_location=self._device, weights_only=False)
         state_dict = checkpoint.get("model_state_dict", checkpoint)
-        model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(state_dict, strict=True)
         model.to(self._device)
         model.eval()
 
-        if model_type == "cnn_rf":
-            rf_path = self.rf_path()
+        if meta.get("wrapper") is not None:
+            rf_path = self.rf_path(model_type)
             if not rf_path.exists():
                 raise FileNotFoundError(f"Random Forest model not found at {rf_path}")
             rf_model = joblib.load(rf_path)
-            wrapper = CNNWithRFWrapper(model, rf_model)
+            if hasattr(rf_model, "n_jobs"):
+                rf_model.n_jobs = 1
+            wrapper = meta["wrapper"](model, rf_model)
             self._models[model_type] = wrapper
-            logger.info("Loaded model: %s (CNN + RF)", model_type)
+            logger.info("Loaded model: %s", model_type)
             return wrapper
 
         self._models[model_type] = model
@@ -100,7 +105,7 @@ class ModelRegistry:
 
     def get_pytorch_module(self, model_type: str) -> torch.nn.Module:
         loaded = self.load(model_type)
-        if isinstance(loaded, CNNWithRFWrapper):
+        if hasattr(loaded, "cnn"):
             return loaded.cnn
         return loaded
 

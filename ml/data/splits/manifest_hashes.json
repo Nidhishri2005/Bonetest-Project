@@ -1,0 +1,17 @@
+{
+  "train_manifest": {
+    "path": "C:\\Bonetest\\ml\\data\\splits\\train_manifest.csv",
+    "sha256": "718bfc88b4b7f68617b5e3696e37f59c54dc162bc354f0fac25ac16a4164e347",
+    "rows": 10068
+  },
+  "val_manifest": {
+    "path": "C:\\Bonetest\\ml\\data\\splits\\val_manifest.csv",
+    "sha256": "c8e3270dd10690cf531c367b04071a4ad4558b3813552e6158457fd7f31effd7",
+    "rows": 1259
+  },
+  "test_manifest": {
+    "path": "C:\\Bonetest\\ml\\data\\splits\\test_manifest.csv",
+    "sha256": "70a26d0db0e7c9ebab855a64d918be1f9299280ce623444af902af4eca4ce823",
+    "rows": 1259
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "norm_mean": 0.1999,
+  "norm_std": 0.2229,
+  "mean_age": 127.29,
+  "std_age": 41.25,
+  "target_size": 384,
+  "sample_size": 1500
+}

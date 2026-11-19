@@ -1,0 +1,157 @@
+{
+  "total_raw": 12611,
+  "duplicates_count": 25,
+  "clean_count": 12586,
+  "duplicate_records": [
+    {
+      "primary_id": "1458",
+      "duplicate_id": "1626",
+      "hamming_distance": 0,
+      "hash_hex": "0xe0f0f0f0f0f0f4f4"
+    },
+    {
+      "primary_id": "2242",
+      "duplicate_id": "2341",
+      "hamming_distance": 0,
+      "hash_hex": "0x68707070707000"
+    },
+    {
+      "primary_id": "2242",
+      "duplicate_id": "2439",
+      "hamming_distance": 0,
+      "hash_hex": "0x68707070707000"
+    },
+    {
+      "primary_id": "2242",
+      "duplicate_id": "3839",
+      "hamming_distance": 0,
+      "hash_hex": "0x68707070707000"
+    },
+    {
+      "primary_id": "2258",
+      "duplicate_id": "2379",
+      "hamming_distance": 0,
+      "hash_hex": "0x60707070707000"
+    },
+    {
+      "primary_id": "2258",
+      "duplicate_id": "2727",
+      "hamming_distance": 0,
+      "hash_hex": "0x60707070707000"
+    },
+    {
+      "primary_id": "2258",
+      "duplicate_id": "2744",
+      "hamming_distance": 0,
+      "hash_hex": "0x60707070707000"
+    },
+    {
+      "primary_id": "2258",
+      "duplicate_id": "2937",
+      "hamming_distance": 0,
+      "hash_hex": "0x60707070707000"
+    },
+    {
+      "primary_id": "2258",
+      "duplicate_id": "2992",
+      "hamming_distance": 0,
+      "hash_hex": "0x60707070707000"
+    },
+    {
+      "primary_id": "2440",
+      "duplicate_id": "3386",
+      "hamming_distance": 0,
+      "hash_hex": "0x707070707000"
+    },
+    {
+      "primary_id": "2440",
+      "duplicate_id": "3637",
+      "hamming_distance": 0,
+      "hash_hex": "0x707070707000"
+    },
+    {
+      "primary_id": "2527",
+      "duplicate_id": "3704",
+      "hamming_distance": 0,
+      "hash_hex": "0xc0d0f0f0f0f0f0"
+    },
+    {
+      "primary_id": "2759",
+      "duplicate_id": "8231",
+      "hamming_distance": 0,
+      "hash_hex": "0x113571b2b0313131"
+    },
+    {
+      "primary_id": "2906",
+      "duplicate_id": "7767",
+      "hamming_distance": 0,
+      "hash_hex": "0x1317172b0b13131"
+    },
+    {
+      "primary_id": "2906",
+      "duplicate_id": "11610",
+      "hamming_distance": 0,
+      "hash_hex": "0x1317172b0b13131"
+    },
+    {
+      "primary_id": "3395",
+      "duplicate_id": "3820",
+      "hamming_distance": 0,
+      "hash_hex": "0x383030303000"
+    },
+    {
+      "primary_id": "4092",
+      "duplicate_id": "4343",
+      "hamming_distance": 0,
+      "hash_hex": "0xd4d0b2f0b0b0b2f0"
+    },
+    {
+      "primary_id": "4176",
+      "duplicate_id": "4288",
+      "hamming_distance": 0,
+      "hash_hex": "0x60607070707000"
+    },
+    {
+      "primary_id": "4270",
+      "duplicate_id": "4277",
+      "hamming_distance": 0,
+      "hash_hex": "0x3333737131333333"
+    },
+    {
+      "primary_id": "7014",
+      "duplicate_id": "12249",
+      "hamming_distance": 0,
+      "hash_hex": "0x3175717270716161"
+    },
+    {
+      "primary_id": "7283",
+      "duplicate_id": "12921",
+      "hamming_distance": 0,
+      "hash_hex": "0x731717270b17161"
+    },
+    {
+      "primary_id": "7330",
+      "duplicate_id": "8373",
+      "hamming_distance": 0,
+      "hash_hex": "0x1131717230b13131"
+    },
+    {
+      "primary_id": "10556",
+      "duplicate_id": "14163",
+      "hamming_distance": 0,
+      "hash_hex": "0x5755b1f270616367"
+    },
+    {
+      "primary_id": "14040",
+      "duplicate_id": "15340",
+      "hamming_distance": 0,
+      "hash_hex": "0x5555b1f270716361"
+    },
+    {
+      "primary_id": "14496",
+      "duplicate_id": "15254",
+      "hamming_distance": 0,
+      "hash_hex": "0x1755317278b1b3b3"
+    }
+  ]
+}

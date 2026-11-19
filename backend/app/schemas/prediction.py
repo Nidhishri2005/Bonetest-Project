@@ -1,14 +1,19 @@
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 
 class ModelType(str, Enum):
+    efficientnet_b3 = "efficientnet_b3"
     cnn = "cnn"
     cnn_dnn = "cnn_dnn"
     multimodal_cnn = "multimodal_cnn"
+    regression_multimodal = "regression_multimodal"
+    ensemble_cnn = "ensemble_cnn"
+    cnn_tw3 = "cnn_tw3"
     cnn_rf = "cnn_rf"
+    multiscale_cnn_rf = "multiscale_cnn_rf"
 
 
 class Gender(str, Enum):
@@ -29,6 +34,8 @@ class ModelInfo(BaseModel):
     requires_gender: bool
     supports_gradcam: bool
     checkpoint_available: bool
+    is_experimental: bool = False
+    is_legacy: bool = False
 
 
 class ModelsListResponse(BaseModel):
@@ -36,21 +43,59 @@ class ModelsListResponse(BaseModel):
     default_model: str
 
 
+class ValidationDetails(BaseModel):
+    is_valid: bool
+    predicted_class: str
+    confidence: float
+    threshold: float
+    score: Optional[float] = None
+    reason_code: Optional[str] = None
+    deciding_stage: Optional[str] = None
+    stage_passed: Optional[int] = None
+    anatomical_coverage: Optional[float] = None
+    probabilities: Optional[Dict[str, float]] = None
+    rejection_code: Optional[str] = None
+    rejection_message: Optional[str] = None
+    processing_time_ms: float = 0.0
+    gate_details: Optional[Dict[str, Any]] = None
+
+
+class InvalidImageResponse(BaseModel):
+    success: bool = False
+    error: str = "INVALID_IMAGE"
+    reason_code: str = "INVALID_IMAGE"
+    message: str = "Image does not look like a pediatric hand X-ray. Upload a clear hand/wrist radiograph."
+    score: Optional[float] = None
+    threshold: Optional[float] = None
+    stage: Optional[str] = None
+    validation: Optional[ValidationDetails] = None
+
+
 class PredictionResponse(BaseModel):
+    success: bool = True
     model_type: str
     bone_age_months: float
     confidence: float = Field(ge=0.0, le=1.0)
     gender_used: Optional[str] = None
     processing_time_ms: float
+    uncertainty_lower_months: Optional[float] = None
+    uncertainty_upper_months: Optional[float] = None
+    uncertainty_interval_months: Optional[float] = None
+    uncertainty_note: Optional[str] = None
+    inference_engine: Optional[str] = None
+    validation: Optional[ValidationDetails] = None
 
 
 class GradCamResponse(BaseModel):
+    success: bool = True
     model_type: str
     bone_age_months: float
     confidence: float
+    method: Optional[str] = "gradcam++"
     heatmap_base64: str
     overlay_base64: str
     processing_time_ms: float
+    validation: Optional[ValidationDetails] = None
 
 
 class MetricValues(BaseModel):

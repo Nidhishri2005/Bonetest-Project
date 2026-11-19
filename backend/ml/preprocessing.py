@@ -8,7 +8,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(iterable, *args, **kwargs):
+        return iterable
 
 
 def letterbox_resize(image: np.ndarray, size: int = 512) -> np.ndarray:

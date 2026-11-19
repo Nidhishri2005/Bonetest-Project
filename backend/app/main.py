@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -6,6 +8,14 @@ from app.api.routes.health import router as health_router
 from app.api.routes.prediction import prediction_router, router as models_router
 from app.core.config import get_settings
 from app.core.dependencies import ensure_directories
+from app.services.image_validator import get_image_validator
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Load and strictly validate validator_ood.npz at application startup
+    get_image_validator()
+    yield
 
 
 def create_app() -> FastAPI:
@@ -22,6 +32,7 @@ def create_app() -> FastAPI:
         ),
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     app.add_middleware(

@@ -54,12 +54,14 @@ def bytes_to_grayscale(image_bytes: bytes) -> NDArray[np.uint8]:
 def preprocess_for_inference(
     image_bytes: bytes,
     settings: Settings | None = None,
+    target_size: int | None = None,
 ) -> Tuple[torch.Tensor, NDArray[np.uint8]]:
     """Return (1,1,H,W) tensor and original grayscale for overlay."""
     settings = settings or get_settings()
     raw = bytes_to_grayscale(image_bytes)
     original_display = raw.copy()
-    resized = letterbox_resize(raw, settings.image_size)
+    size = target_size if target_size is not None else settings.image_size
+    resized = letterbox_resize(raw, size)
     normalized = normalize_image(resized)
     tensor = torch.from_numpy(normalized).unsqueeze(0).unsqueeze(0).float()
     return tensor, original_display

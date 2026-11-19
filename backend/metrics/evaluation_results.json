@@ -2,32 +2,38 @@
   "comparison": {
     "models": [
       {
-        "model_type": "cnn",
-        "display_name": "CNN Baseline",
-        "metrics": { "mae": 8.42, "mse": 98.76, "rmse": 9.94 },
-        "num_samples": 1425
+        "model_type": "cnn_rf",
+        "display_name": "CNN + Random Forest [Legacy Baseline]",
+        "metrics": { "mae": 11.04, "mse": 205.86, "rmse": 14.35 },
+        "num_samples": 1892
       },
       {
-        "model_type": "cnn_dnn",
-        "display_name": "CNN + DNN",
-        "metrics": { "mae": 7.89, "mse": 86.54, "rmse": 9.30 },
-        "num_samples": 1425
+        "model_type": "cnn",
+        "display_name": "CNN Baseline [Legacy Baseline]",
+        "metrics": { "mae": 11.33, "mse": 216.50, "rmse": 14.71 },
+        "num_samples": 1892
       },
       {
         "model_type": "multimodal_cnn",
-        "display_name": "Multimodal CNN",
-        "metrics": { "mae": 7.15, "mse": 72.18, "rmse": 8.49 },
-        "num_samples": 1425
+        "display_name": "Multimodal CNN [Legacy Baseline]",
+        "metrics": { "mae": 11.39, "mse": 213.45, "rmse": 14.61 },
+        "num_samples": 1892
       },
       {
-        "model_type": "cnn_rf",
-        "display_name": "CNN + Random Forest",
-        "metrics": { "mae": 8.01, "mse": 89.32, "rmse": 9.45 },
-        "num_samples": 1425
+        "model_type": "cnn_tw3",
+        "display_name": "CNN + TW3 Proxy [Legacy Baseline]",
+        "metrics": { "mae": 12.47, "mse": 262.84, "rmse": 16.21 },
+        "num_samples": 1892
+      },
+      {
+        "model_type": "cnn_dnn",
+        "display_name": "CNN + DNN [Legacy Baseline]",
+        "metrics": { "mae": 12.53, "mse": 257.99, "rmse": 16.06 },
+        "num_samples": 1892
       }
     ],
-    "best_model": "multimodal_cnn",
-    "generated_at": "2024-01-15T12:00:00+00:00"
+    "best_model": "cnn_rf",
+    "generated_at": "2026-11-19T14:00:00+00:00"
   },
   "plots": {
     "metrics_comparison": "metrics/plots/metrics_comparison.png",
@@ -35,7 +41,12 @@
   },
   "details": {
     "dataset": "RSNA Pediatric Bone Age",
+    "note": "Measured validation metrics recorded in checkpoint metadata (unknown historical 15% validation split, N=1892). Additionally, cnn_best.pt was measured on the frozen 10% stratified test split (N=1259) at MAE=10.92 mo, RMSE=14.09 mo.",
     "validation_split": 0.15,
-    "image_size": 512
+    "image_size": 512,
+    "normalization": {
+      "mean": 0.4523,
+      "std": 0.2118
+    }
   }
 }

@@ -1,18 +1,19 @@
-"""Training script for all bone age models.
+"""Training script for all bone age models with configurable loss and scheduling.
 
-Usage (Kaggle/Colab/local GPU):
+Usage:
     cd backend
-    python -m ml.train --model-type cnn --data-dir /path/to/rsna --epochs 30
+    python -m ml.train --model-type cnn --data-dir /path/to/rsna --epochs 30 --loss smooth_l1 --scheduler plateau
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
+import time
 from pathlib import Path
 
-import time 
 import numpy as np
 import torch
 import torch.nn as nn
@@ -24,6 +25,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.models import MODEL_REGISTRY
 from app.models.cnn_rf import CNNFeatureExtractor
+from app.models.multiscale_cnn_rf import MultiscaleCNNFeatureExtractor
 from ml.augmentation import TrainAugmentation
 from ml.dataset import create_dataloaders
 from ml.preprocessing import compute_dataset_statistics, save_normalization_stats
@@ -33,15 +35,38 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train bone age regression models")
     parser.add_argument(
         "--model-type",
-        choices=["cnn", "cnn_dnn", "multimodal_cnn", "cnn_rf"],
+        choices=[
+            "cnn",
+            "cnn_dnn",
+            "multimodal_cnn",
+            "regression_multimodal",
+            "ensemble_cnn",
+            "cnn_tw3",
+            "cnn_rf",
+            "multiscale_cnn_rf",
+        ],
         required=True,
     )
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--patience", type=int, default=5)
+    parser.add_argument("--patience", type=int, default=6)
     parser.add_argument("--image-size", type=int, default=512)
+    parser.add_argument(
+        "--loss",
+        choices=["smooth_l1", "mae", "l1", "mse", "huber"],
+        default="smooth_l1",
+        help="Regression loss function (smooth_l1 provides outlier resistance)",
+    )
+    parser.add_argument(
+        "--scheduler",
+        choices=["plateau", "cosine", "step", "none"],
+        default="plateau",
+        help="Learning rate schedule policy",
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    parser.add_argument("--verify-images", action="store_true", help="Pre-scan and drop corrupt images")
     parser.add_argument(
         "--checkpoints-dir", type=Path, default=BACKEND_ROOT / "checkpoints"
     )
@@ -56,14 +81,27 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def set_seed(seed: int = 42) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+
+def _model_requires_gender(model_type: str) -> bool:
+    meta = MODEL_REGISTRY.get(model_type, {})
+    return meta.get("requires_gender", False)
+
+
 def train_epoch(model, loader, optimizer, criterion, device, model_type, scaler):
     model.train()
     total_loss = 0.0
-
     num_batches = len(loader)
 
     for batch_idx, batch in enumerate(loader):
-
         if batch_idx % 50 == 0:
             print(f"Training batch {batch_idx+1}/{num_batches}")
 
@@ -73,8 +111,7 @@ def train_epoch(model, loader, optimizer, criterion, device, model_type, scaler)
         optimizer.zero_grad(set_to_none=True)
 
         with autocast(enabled=device.type == "cuda"):
-
-            if model_type == "multimodal_cnn":
+            if _model_requires_gender(model_type):
                 gender = batch["male"].unsqueeze(-1).to(device)
                 outputs = model(images, gender)
             else:
@@ -90,6 +127,7 @@ def train_epoch(model, loader, optimizer, criterion, device, model_type, scaler)
 
     return total_loss / len(loader.dataset)
 
+
 @torch.no_grad()
 def validate(model, loader, criterion, device, model_type):
     model.eval()
@@ -100,7 +138,7 @@ def validate(model, loader, criterion, device, model_type):
         images = batch["image"].to(device)
         y = batch["bone_age"].to(device)
 
-        if model_type == "multimodal_cnn":
+        if _model_requires_gender(model_type):
             gender = batch["male"].unsqueeze(-1).to(device)
             outputs = model(images, gender)
         else:
@@ -126,78 +164,54 @@ def train_random_forest(
     image_size: int,
     norm_mean: float,
     norm_std: float,
+    model_type: str,
+    verify_images: bool = False,
 ) -> None:
-
     import joblib
     import pandas as pd
     from sklearn.ensemble import RandomForestRegressor
 
     from ml.dataset import (
         BoneAgeDataset,
-        stratified_split,
+        train_val_test_split,
         find_image_directory,
+        verify_dataset_images,
     )
 
-    # ----------------------------
-    # Locate CSV
-    # ----------------------------
     csv_path = data_dir / "train.csv"
-
     if not csv_path.exists():
         csv_path = data_dir / "boneage-training-dataset.csv"
-
     if not csv_path.exists():
-        raise FileNotFoundError("Training CSV not found.")
+        raise FileNotFoundError(f"Training CSV not found in {data_dir}.")
 
     df = pd.read_csv(csv_path)
-
-    # ----------------------------
-    # Locate image folder
-    # ----------------------------
     image_dir = find_image_directory(data_dir)
-
     print(f"\nUsing image directory: {image_dir}\n")
 
-    train_df, val_df = stratified_split(df)
+    if verify_images:
+        df = verify_dataset_images(df, image_dir)
 
-    # ----------------------------
-    # Load pretrained CNN
-    # ----------------------------
-    cnn_checkpoint = checkpoints_dir / "cnn_best.pt"
+    train_df, val_df, _ = train_val_test_split(df, train_ratio=0.70, val_ratio=0.15, test_ratio=0.15, seed=42)
 
-    if not cnn_checkpoint.exists():
-        raise FileNotFoundError(
-            f"Cannot find pretrained CNN:\n{cnn_checkpoint}"
-        )
+    if model_type == "cnn_rf":
+        cnn_checkpoint = checkpoints_dir / "cnn_best.pt"
+        if not cnn_checkpoint.exists():
+            raise FileNotFoundError(f"Cannot find pretrained CNN: {cnn_checkpoint}")
 
-    print(f"Loading pretrained CNN from {cnn_checkpoint}")
-
-    cnn = CNNFeatureExtractor(pretrained=False)
-
-    checkpoint = torch.load(
-        cnn_checkpoint,
-        map_location=device,
-        weights_only=False,
-    )
-
-    state_dict = checkpoint.get(
-        "model_state_dict",
-        checkpoint,
-    )
-
-    cnn.load_state_dict(
-        state_dict,
-        strict=False,
-    )
+        print(f"Loading pretrained CNN backbone from {cnn_checkpoint}")
+        cnn = CNNFeatureExtractor(pretrained=False)
+        checkpoint = torch.load(cnn_checkpoint, map_location=device, weights_only=False)
+        state_dict = checkpoint.get("model_state_dict", checkpoint)
+        cnn.load_state_dict(state_dict, strict=False)
+    else:
+        print("Initializing deterministic multiscale feature extractor")
+        torch.manual_seed(42)
+        cnn = MultiscaleCNNFeatureExtractor(pretrained=False)
 
     cnn.to(device)
     cnn.eval()
 
-    # ----------------------------
-    # Feature extraction
-    # ----------------------------
     def extract_features(subset_df):
-
         dataset = BoneAgeDataset(
             subset_df,
             image_dir,
@@ -206,38 +220,24 @@ def train_random_forest(
             norm_mean,
             norm_std,
         )
-
         loader = torch.utils.data.DataLoader(
             dataset,
             batch_size=32,
             shuffle=False,
             num_workers=2,
-            pin_memory=True,
+            pin_memory=torch.cuda.is_available(),
         )
 
         features = []
         ages = []
-
         with torch.no_grad():
-
             for i, batch in enumerate(loader):
-
                 if i % 50 == 0:
-                    print(
-                        f"Extracting features: batch {i+1}/{len(loader)}"
-                    )
-
+                    print(f"Extracting features: batch {i+1}/{len(loader)}")
                 images = batch["image"].to(device)
-
-                feats = cnn(images)
-
-                feats = feats.cpu().numpy()
-
+                feats = cnn(images).cpu().numpy()
                 features.append(feats)
-
-                ages.extend(
-                    batch["bone_age"].numpy().tolist()
-                )
+                ages.extend(batch["bone_age"].numpy().tolist())
 
         return np.vstack(features), np.array(ages)
 
@@ -247,119 +247,56 @@ def train_random_forest(
     print("\nExtracting validation features...")
     X_val, y_val = extract_features(val_df)
 
-    # ----------------------------
-    # Train Random Forest
-    # ----------------------------
-    print("\nTraining Random Forest...")
+    print("\nTraining Random Forest Regressor (200 trees)...")
     start = time.time()
-
     rf = RandomForestRegressor(
         n_estimators=200,
         max_depth=20,
         random_state=42,
         n_jobs=-1,
     )
-
     rf.fit(X_train, y_train)
-    print(f"Random Forest training finished in {(time.time()-start)/60:.2f} minutes")
+    duration = time.time() - start
+    print(f"Random Forest training completed in {duration/60:.2f} minutes.")
 
-    # ----------------------------
-    # Evaluate
-    # ----------------------------
     preds = rf.predict(X_val)
-
     mae = float(np.mean(np.abs(preds - y_val)))
     mse = float(np.mean((preds - y_val) ** 2))
     rmse = float(np.sqrt(mse))
 
-    print(f"\nRF Validation")
-    print(f"MAE  : {mae:.2f}")
-    print(f"RMSE : {rmse:.2f}")
+    print(f"\nRandom Forest Validation:")
+    print(f"  MAE : {mae:.2f} months")
+    print(f"  RMSE: {rmse:.2f} months")
 
-    # ----------------------------
-    # Save RF model
-    # ----------------------------
     rf_dir = BACKEND_ROOT / "rf_models"
-    rf_dir.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    rf_dir.mkdir(parents=True, exist_ok=True)
+    joblib.dump(rf, rf_dir / f"{model_type}.joblib")
 
-    joblib.dump(
-        rf,
-        rf_dir / "cnn_rf.joblib",
-    )
-
-    # ----------------------------
-    # Save combined checkpoint
-    # ----------------------------
     torch.save(
         {
             "model_state_dict": cnn.state_dict(),
-            "model_type": "cnn_rf",
+            "model_type": model_type,
             "val_mae": mae,
+            "val_mse": mse,
             "val_rmse": rmse,
         },
-        checkpoints_dir / "cnn_rf_best.pt",
+        checkpoints_dir / f"{model_type}_best.pt",
     )
+    print("Random Forest model and feature extractor checkpoint saved successfully.")
 
-    print("\nRandom Forest training completed.")
+
 def main() -> None:
-
-    # -------------------------
-    # Step 1
-    # -------------------------
-    print("Step 1: Parsing arguments")
     args = parse_args()
-
-    # -------------------------
-    # Step 2
-    # -------------------------
-    print("Step 2: Setting device")
+    set_seed(args.seed)
     device = torch.device(args.device)
-
-    # -------------------------
-    # Step 3
-    # -------------------------
-    print("Step 3: Creating checkpoint directory")
-    args.checkpoints_dir.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    # -------------------------
-    # Step 4
-    # -------------------------
-    print("Step 4: Using fixed normalization values")
+    args.checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
     norm_mean = 0.4523
     norm_std = 0.2118
+    stats = {"mean": norm_mean, "std": norm_std}
+    save_normalization_stats(stats, args.checkpoints_dir / "normalization.json")
 
-    stats = {
-        "mean": norm_mean,
-        "std": norm_std,
-    }
-
-    save_normalization_stats(
-        stats,
-        args.checkpoints_dir / "normalization.json",
-    )
-
-    print(
-        f"Normalization — mean: {norm_mean:.4f}, std: {norm_std:.4f}"
-    )
-
-    # ======================================================
-    # CNN + Random Forest
-    # Skip CNN training completely
-    # ======================================================
-
-    if args.model_type == "cnn_rf":
-
-        print("\nUsing existing CNN checkpoint (cnn_best.pt)")
-        print("Skipping CNN training...")
-        print("Starting Random Forest training...\n")
-
+    if args.model_type in {"cnn_rf", "multiscale_cnn_rf"}:
         train_random_forest(
             args.data_dir,
             args.checkpoints_dir,
@@ -367,23 +304,12 @@ def main() -> None:
             args.image_size,
             norm_mean,
             norm_std,
+            args.model_type,
+            verify_images=args.verify_images,
         )
-
-        print("Training completed successfully!")
         return
 
-    # -------------------------
-    # Step 5
-    # -------------------------
-    print("Step 5: Creating augmentations")
-
     augment = TrainAugmentation()
-
-    # -------------------------
-    # Step 6
-    # -------------------------
-    print("Step 6: Creating dataloaders")
-
     train_loader, val_loader, _, _ = create_dataloaders(
         args.data_dir,
         batch_size=args.batch_size,
@@ -391,108 +317,89 @@ def main() -> None:
         train_transform=augment,
         norm_mean=norm_mean,
         norm_std=norm_std,
+        verify_images=args.verify_images,
     )
 
-    # -------------------------
-    # Step 7
-    # -------------------------
-    print("Step 7: Creating model")
-
     meta = MODEL_REGISTRY[args.model_type]
+    model = meta["class"](pretrained=args.pretrained).to(device)
 
-    model = meta["class"](
-        pretrained=args.pretrained
-    ).to(device)
-    # -------------------------------------------------
-    # Load pretrained CNN backbone into multimodal model
-    # -------------------------------------------------
-    # -------------------------------------------------
-    # Load pretrained CNN backbone
-    # -------------------------------------------------
-    if args.model_type in ["multimodal_cnn", "cnn_dnn"] and args.cnn_checkpoint is not None:
-
+    # Optional transfer learning from pretrained CNN checkpoint
+    if args.model_type in [
+        "multimodal_cnn",
+        "regression_multimodal",
+        "cnn_dnn",
+        "cnn_tw3",
+    ] and args.cnn_checkpoint is not None:
         print(f"\nLoading pretrained CNN from {args.cnn_checkpoint}")
-
-        checkpoint = torch.load(
-            args.cnn_checkpoint,
-            map_location=device,
-            weights_only=False,
-        )
-
-        state_dict = checkpoint.get(
-            "model_state_dict",
-            checkpoint,
-        )
-
+        checkpoint = torch.load(args.cnn_checkpoint, map_location=device, weights_only=False)
+        state_dict = checkpoint.get("model_state_dict", checkpoint)
         backbone_state = {}
-
-        # Extract only backbone weights
         for key, value in state_dict.items():
-
             if key.startswith("backbone."):
+                new_key = key.replace("backbone.", "image_backbone.", 1)
+            elif key.startswith("image_backbone."):
+                new_key = key
+            else:
+                continue
+            backbone_state[new_key] = value
 
-                if args.model_type == "multimodal_cnn":
-                    new_key = key.replace(
-                        "backbone.",
-                        "image_backbone."
-                    )
-                else:
-                    new_key = key
+        model.load_state_dict(backbone_state, strict=False)
+        print("Pretrained CNN backbone loaded successfully.")
 
-                backbone_state[new_key] = value
-
-        # Load ONLY ONCE
-        missing, unexpected = model.load_state_dict(
-            backbone_state,
-            strict=False,
-        )
-
-        print("CNN backbone loaded successfully!")
-
-        # Freeze backbone
-        if args.model_type == "multimodal_cnn":
+        if args.model_type in {"multimodal_cnn", "cnn_tw3"}:
             for p in model.image_backbone.parameters():
                 p.requires_grad = False
-
         elif args.model_type == "cnn_dnn":
             for p in model.backbone.parameters():
                 p.requires_grad = False
+        print("Backbone frozen; training regression head.")
 
-    # -------------------------
-    # Step 8
-    # -------------------------
-    print("Step 8: Creating optimizer")
-
-    criterion = nn.SmoothL1Loss()
+    # Select loss function
+    if args.loss == "smooth_l1":
+        criterion = nn.SmoothL1Loss(beta=1.0)
+    elif args.loss in {"mae", "l1"}:
+        criterion = nn.L1Loss()
+    elif args.loss == "mse":
+        criterion = nn.MSELoss()
+    elif args.loss == "huber":
+        criterion = nn.HuberLoss(delta=1.0)
+    else:
+        criterion = nn.SmoothL1Loss(beta=1.0)
 
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=args.lr,
-        weight_decay=1e-4
+        weight_decay=1e-4,
     )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=args.epochs,
-    )
+    # Select LR scheduler
+    if args.scheduler == "plateau":
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=2
+        )
+    elif args.scheduler == "cosine":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.epochs, eta_min=1e-6
+        )
+    elif args.scheduler == "step":
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=10, gamma=0.5
+        )
+    else:
+        scheduler = None
 
-    scaler = GradScaler(
-        enabled=device.type == "cuda"
-    )
+    scaler = GradScaler(enabled=device.type == "cuda")
 
     best_mae = float("inf")
     patience_counter = 0
     history = []
 
-    # -------------------------
-    # Step 9
-    # -------------------------
-    print("Step 9: Starting training")
+    print(
+        f"Starting training for {args.model_type} ({args.epochs} epochs, "
+        f"loss={args.loss}, scheduler={args.scheduler}, lr={args.lr})..."
+    )
 
     for epoch in range(1, args.epochs + 1):
-
-        print(f"\n========== Epoch {epoch}/{args.epochs} ==========")
-
         train_loss = train_epoch(
             model,
             train_loader,
@@ -511,7 +418,13 @@ def main() -> None:
             args.model_type,
         )
 
-        scheduler.step()
+        if scheduler is not None:
+            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(mae)
+            else:
+                scheduler.step()
+
+        current_lr = optimizer.param_groups[0]["lr"]
 
         history.append(
             {
@@ -521,23 +434,23 @@ def main() -> None:
                 "mae": mae,
                 "mse": mse,
                 "rmse": rmse,
+                "lr": current_lr,
             }
         )
 
         print(
-            f"Epoch {epoch}/{args.epochs} — "
-            f"train_loss={train_loss:.4f} | "
-            f"val_mae={mae:.2f} | "
-            f"val_rmse={rmse:.2f}"
+            f"Epoch {epoch:02d}/{args.epochs:02d} | "
+            f"Train Loss: {train_loss:.4f} | "
+            f"Val Loss: {val_loss:.4f} | "
+            f"Val MAE: {mae:.2f} mo | "
+            f"Val RMSE: {rmse:.2f} mo | "
+            f"LR: {current_lr:.2e}"
         )
 
         if mae < best_mae:
-
             best_mae = mae
             patience_counter = 0
-
             ckpt_name = f"{args.model_type}_best.pt"
-
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
@@ -547,42 +460,23 @@ def main() -> None:
                     "val_rmse": rmse,
                     "norm_mean": norm_mean,
                     "norm_std": norm_std,
+                    "loss_func": args.loss,
+                    "epoch": epoch,
                 },
                 args.checkpoints_dir / ckpt_name,
             )
-
-            print(f"Saved checkpoint: {ckpt_name}")
-
+            print(f"  -> Best model saved with MAE: {mae:.2f} months")
         else:
-
             patience_counter += 1
-
             if patience_counter >= args.patience:
-                print("Early stopping triggered")
+                print(f"Early stopping triggered after {args.patience} epochs with no MAE improvement.")
                 break
 
-    # -------------------------
-    # Step 10
-    # -------------------------
-    print("Step 10: Saving history")
+    history_path = args.checkpoints_dir / f"{args.model_type}_history.json"
+    with open(history_path, "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=2)
+    print(f"Training history saved to {history_path}")
 
-    history_path = (
-        args.checkpoints_dir
-        / f"{args.model_type}_history.json"
-    )
 
-    with open(
-        history_path,
-        "w",
-        encoding="utf-8",
-    ) as f:
-
-        json.dump(
-            history,
-            f,
-            indent=2,
-        )
-
-    print("Training completed successfully!")
 if __name__ == "__main__":
     main()
