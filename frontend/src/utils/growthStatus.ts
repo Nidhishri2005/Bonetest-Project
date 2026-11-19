@@ -1,3 +1,15 @@
+/**
+ * Growth Assessment Utilities (Research / Secondary Analysis Only)
+ *
+ * NOTE ON CLINICAL INTEGRATION:
+ * This module is intentionally kept DISABLED from the primary prediction interface.
+ * Bone age difference relative to chronological age is a clinical screening metric,
+ * not a diagnostic label. True growth disorders require comprehensive pediatric
+ * endocrinological assessment, longitudinal height velocity, parental target heights,
+ * and standard WHO growth percentiles. Single-point predictions must not present
+ * "Under-growth" or "Over-growth" as a definitive medical diagnosis.
+ */
+
 export const GROWTH_STATUS_THRESHOLD_YEARS = 1;
 export const MAX_CHRONOLOGICAL_AGE_YEARS = 120;
 export const MAX_BONE_AGE_MONTHS = 240;

@@ -1,0 +1,16 @@
+{
+  "validator": {
+    "model_name": "hand_validator.onnx",
+    "max_absolute_difference": 4.76837158203125e-06,
+    "mean_absolute_difference": 2.1258990727801574e-06,
+    "tolerance": 0.0001,
+    "parity_passed": true
+  },
+  "efficientnet_b3": {
+    "model_name": "efficientnet_b3.onnx",
+    "max_absolute_difference": 3.725290298461914e-09,
+    "mean_absolute_difference": 3.725290298461914e-09,
+    "tolerance": 0.0001,
+    "parity_passed": true
+  }
+}

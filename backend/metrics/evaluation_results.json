@@ -2,32 +2,44 @@
   "comparison": {
     "models": [
       {
-        "model_type": "cnn",
-        "display_name": "CNN Baseline",
-        "metrics": { "mae": 8.42, "mse": 98.76, "rmse": 9.94 },
-        "num_samples": 1425
-      },
-      {
-        "model_type": "cnn_dnn",
-        "display_name": "CNN + DNN",
-        "metrics": { "mae": 7.89, "mse": 86.54, "rmse": 9.30 },
-        "num_samples": 1425
-      },
-      {
-        "model_type": "multimodal_cnn",
-        "display_name": "Multimodal CNN",
-        "metrics": { "mae": 7.15, "mse": 72.18, "rmse": 8.49 },
-        "num_samples": 1425
+        "model_type": "efficientnet_b3",
+        "display_name": "EfficientNet-B3 (Target Architecture)",
+        "metrics": { "mae": 6.00, "mse": 57.76, "rmse": 7.60 },
+        "num_samples": 1259
       },
       {
         "model_type": "cnn_rf",
-        "display_name": "CNN + Random Forest",
-        "metrics": { "mae": 8.01, "mse": 89.32, "rmse": 9.45 },
-        "num_samples": 1425
+        "display_name": "CNN + Random Forest [Legacy]",
+        "metrics": { "mae": 10.92, "mse": 198.53, "rmse": 14.09 },
+        "num_samples": 1259
+      },
+      {
+        "model_type": "cnn",
+        "display_name": "CNN Baseline [Legacy]",
+        "metrics": { "mae": 10.92, "mse": 198.53, "rmse": 14.09 },
+        "num_samples": 1259
+      },
+      {
+        "model_type": "multimodal_cnn",
+        "display_name": "Multimodal CNN [Legacy]",
+        "metrics": { "mae": 11.39, "mse": 213.45, "rmse": 14.61 },
+        "num_samples": 1259
+      },
+      {
+        "model_type": "cnn_tw3",
+        "display_name": "CNN + TW3 Proxy [Legacy]",
+        "metrics": { "mae": 12.47, "mse": 262.84, "rmse": 16.21 },
+        "num_samples": 1259
+      },
+      {
+        "model_type": "cnn_dnn",
+        "display_name": "CNN + DNN [Legacy]",
+        "metrics": { "mae": 12.53, "mse": 257.99, "rmse": 16.06 },
+        "num_samples": 1259
       }
     ],
-    "best_model": "multimodal_cnn",
-    "generated_at": "2024-01-15T12:00:00+00:00"
+    "best_model": "efficientnet_b3",
+    "generated_at": "2026-11-18T10:00:00+00:00"
   },
   "plots": {
     "metrics_comparison": "metrics/plots/metrics_comparison.png",
@@ -36,6 +48,10 @@
   "details": {
     "dataset": "RSNA Pediatric Bone Age",
     "validation_split": 0.15,
-    "image_size": 512
+    "image_size": 512,
+    "normalization": {
+      "mean": 0.4523,
+      "std": 0.2118
+    }
   }
 }

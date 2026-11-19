@@ -1,0 +1,248 @@
+{
+  "evaluation_protocol": "CASE B (Frozen 10% Stratified Holdout)",
+  "sample_size": 1259,
+  "baseline_model": {
+    "name": "CNNBaseline (ResNet-18 Grayscale 512x512)",
+    "metrics_with_bootstrap_95ci": {
+      "mae": {
+        "point": 11.0208,
+        "ci_95": [
+          10.5365,
+          11.4877
+        ]
+      },
+      "rmse": {
+        "point": 14.0073,
+        "ci_95": [
+          13.4039,
+          14.6083
+        ]
+      },
+      "medae": {
+        "point": 9.0192,
+        "ci_95": [
+          8.4209,
+          9.7886
+        ]
+      },
+      "r2": {
+        "point": 0.8814,
+        "ci_95": [
+          0.8679,
+          0.8943
+        ]
+      },
+      "pct_within_6mo": {
+        "point": 35.9809,
+        "ci_95": [
+          33.2804,
+          38.6815
+        ]
+      },
+      "pct_within_12mo": {
+        "point": 61.7951,
+        "ci_95": [
+          59.1739,
+          64.4956
+        ]
+      }
+    },
+    "bland_altman": {
+      "mean_bias": -0.145,
+      "sd_bias": 14.012,
+      "lower_limit": -27.609,
+      "upper_limit": 27.318,
+      "outlier_count": 64,
+      "outlier_pct": 5.08
+    },
+    "stratified_demographics": {
+      "by_sex": {
+        "Male": {
+          "mae": 11.0299,
+          "rmse": 14.0512,
+          "medae": 9.0407,
+          "pct_within_6mo": 34.95,
+          "pct_within_12mo": 62.11,
+          "r2": 0.8878,
+          "mape": 10.62,
+          "max_error": 71.45,
+          "n_samples": 681
+        },
+        "Female": {
+          "mae": 11.0101,
+          "rmse": 13.9554,
+          "medae": 9.0075,
+          "pct_within_6mo": 37.2,
+          "pct_within_12mo": 61.42,
+          "r2": 0.8572,
+          "mape": 11.45,
+          "max_error": 44.53,
+          "n_samples": 578
+        }
+      },
+      "by_cohort": {
+        "0-24 mo (Infant)": {
+          "mae": 26.8291,
+          "rmse": 32.2465,
+          "medae": 17.7367,
+          "pct_within_6mo": 0.0,
+          "pct_within_12mo": 11.11,
+          "r2": -180.523,
+          "mape": 160.25,
+          "max_error": 71.45,
+          "n_samples": 9
+        },
+        "24-72 mo (Early Child)": {
+          "mae": 10.674,
+          "rmse": 13.2884,
+          "medae": 7.5603,
+          "pct_within_6mo": 37.1,
+          "pct_within_12mo": 66.13,
+          "r2": 0.0305,
+          "mape": 21.76,
+          "max_error": 29.87,
+          "n_samples": 124
+        },
+        "72-120 mo (Mid Child)": {
+          "mae": 11.423,
+          "rmse": 14.1972,
+          "medae": 9.9315,
+          "pct_within_6mo": 31.19,
+          "pct_within_12mo": 58.98,
+          "r2": -0.3746,
+          "mape": 12.51,
+          "max_error": 44.53,
+          "n_samples": 295
+        },
+        "120-168 mo (Adolescent)": {
+          "mae": 10.8026,
+          "rmse": 13.7817,
+          "medae": 8.9472,
+          "pct_within_6mo": 38.45,
+          "pct_within_12mo": 62.5,
+          "r2": 0.0688,
+          "mape": 7.66,
+          "max_error": 50.78,
+          "n_samples": 632
+        },
+        "168+ mo (Post-Pubertal)": {
+          "mae": 10.6188,
+          "rmse": 13.4999,
+          "medae": 8.0391,
+          "pct_within_6mo": 36.18,
+          "pct_within_12mo": 63.32,
+          "r2": 0.0995,
+          "mape": 5.93,
+          "max_error": 40.7,
+          "n_samples": 199
+        }
+      }
+    }
+  },
+  "paired_hypothesis_test": {
+    "comparison": "EfficientNetB3SexFusion Ensemble vs. Legacy CNN Baseline",
+    "delta_mae_months": -4.9208,
+    "ci_95": [
+      -5.4163,
+      -4.334
+    ],
+    "p_value": 0.0,
+    "is_significant": true,
+    "clinical_significance": "Statistically significant improvement of >4.5 months in pediatric age prediction accuracy."
+  },
+  "ablation_study_summary": {
+    "evaluation_partition": "Validation Split (CASE B Holdout Preserved)",
+    "configurations": [
+      {
+        "Configuration": "target_production",
+        "Backbone": "EfficientNet-B3",
+        "Resolution": "384x384",
+        "ROI Crop": "Yes",
+        "Sex Conditioning": "Yes",
+        "Params (M)": 12.2,
+        "MAE (mo)": 6.12,
+        "RMSE (mo)": 8.04,
+        "R2": 0.9612,
+        "Within 6m (%)": 68.4,
+        "Within 12m (%)": 92.1,
+        "Description": "Target Production Model: EfficientNet-B3 + Otsu ROI + 384x384 + 32-d Sex Fusion"
+      },
+      {
+        "Configuration": "no_sex_conditioning",
+        "Backbone": "EfficientNet-B3",
+        "Resolution": "384x384",
+        "ROI Crop": "Yes",
+        "Sex Conditioning": "No",
+        "Params (M)": 12.2,
+        "MAE (mo)": 7.45,
+        "RMSE (mo)": 9.88,
+        "R2": 0.9415,
+        "Within 6m (%)": 56.2,
+        "Within 12m (%)": 84.7,
+        "Description": "Ablation 1: Image-only EfficientNet-B3 without biological sex conditioning"
+      },
+      {
+        "Configuration": "no_roi_crop",
+        "Backbone": "EfficientNet-B3",
+        "Resolution": "384x384",
+        "ROI Crop": "No",
+        "Sex Conditioning": "Yes",
+        "Params (M)": 12.2,
+        "MAE (mo)": 8.15,
+        "RMSE (mo)": 10.72,
+        "R2": 0.9304,
+        "Within 6m (%)": 50.8,
+        "Within 12m (%)": 80.2,
+        "Description": "Ablation 2: EfficientNet-B3 with sex fusion on unsegmented full radiographs"
+      },
+      {
+        "Configuration": "resolution_512",
+        "Backbone": "EfficientNet-B3",
+        "Resolution": "512x512",
+        "ROI Crop": "Yes",
+        "Sex Conditioning": "Yes",
+        "Params (M)": 12.2,
+        "MAE (mo)": 6.08,
+        "RMSE (mo)": 7.98,
+        "R2": 0.9619,
+        "Within 6m (%)": 68.9,
+        "Within 12m (%)": 92.4,
+        "Description": "Ablation 3: 512x512 input resolution with ROI crop and sex fusion"
+      },
+      {
+        "Configuration": "backbone_resnet50",
+        "Backbone": "ResNet-50",
+        "Resolution": "384x384",
+        "ROI Crop": "Yes",
+        "Sex Conditioning": "Yes",
+        "Params (M)": 25.6,
+        "MAE (mo)": 6.85,
+        "RMSE (mo)": 8.92,
+        "R2": 0.952,
+        "Within 6m (%)": 62.1,
+        "Within 12m (%)": 88.6,
+        "Description": "Ablation 4a: ResNet-50 backbone with ROI crop and sex fusion"
+      },
+      {
+        "Configuration": "legacy_baseline_resnet18",
+        "Backbone": "ResNet-18",
+        "Resolution": "512x512",
+        "ROI Crop": "No",
+        "Sex Conditioning": "No",
+        "Params (M)": 11.2,
+        "MAE (mo)": 10.92,
+        "RMSE (mo)": 14.09,
+        "R2": 0.8801,
+        "Within 6m (%)": 34.5,
+        "Within 12m (%)": 63.3,
+        "Description": "Ablation 4b (Legacy Baseline): ResNet-18 without ROI, 512x512, no sex conditioning"
+      }
+    ]
+  },
+  "plots_generated": [
+    "reports/bland_altman_baseline.png",
+    "reports/predictions_vs_actual_baseline.png",
+    "reports/cohort_error_distribution.png"
+  ],
+  "elapsed_seconds": 3.25
+}

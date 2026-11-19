@@ -41,7 +41,7 @@ class ModelRegistry:
             return False
         if not self.checkpoint_path(model_type).exists():
             return False
-        if model_type in {"cnn_rf", "multiscale_cnn_rf"} and not self.rf_path(model_type).exists():
+        if model_type == "cnn_rf" and not self.rf_path(model_type).exists():
             return False
         return True
 
@@ -56,6 +56,8 @@ class ModelRegistry:
                     "requires_gender": meta["requires_gender"],
                     "supports_gradcam": meta["supports_gradcam"],
                     "checkpoint_available": self.is_checkpoint_available(model_id),
+                    "is_experimental": meta.get("is_experimental", False),
+                    "is_legacy": meta.get("is_legacy", False),
                 }
             )
         return result
@@ -89,6 +91,8 @@ class ModelRegistry:
             if not rf_path.exists():
                 raise FileNotFoundError(f"Random Forest model not found at {rf_path}")
             rf_model = joblib.load(rf_path)
+            if hasattr(rf_model, "n_jobs"):
+                rf_model.n_jobs = 1
             wrapper = meta["wrapper"](model, rf_model)
             self._models[model_type] = wrapper
             logger.info("Loaded model: %s", model_type)

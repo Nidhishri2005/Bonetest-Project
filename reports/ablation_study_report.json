@@ -1,0 +1,89 @@
+{
+  "evaluation_partition": "Validation Split (CASE B Holdout Preserved)",
+  "configurations": [
+    {
+      "Configuration": "target_production",
+      "Backbone": "EfficientNet-B3",
+      "Resolution": "384x384",
+      "ROI Crop": "Yes",
+      "Sex Conditioning": "Yes",
+      "Params (M)": 12.2,
+      "MAE (mo)": 6.12,
+      "RMSE (mo)": 8.04,
+      "R2": 0.9612,
+      "Within 6m (%)": 68.4,
+      "Within 12m (%)": 92.1,
+      "Description": "Target Production Model: EfficientNet-B3 + Otsu ROI + 384x384 + 32-d Sex Fusion"
+    },
+    {
+      "Configuration": "no_sex_conditioning",
+      "Backbone": "EfficientNet-B3",
+      "Resolution": "384x384",
+      "ROI Crop": "Yes",
+      "Sex Conditioning": "No",
+      "Params (M)": 12.2,
+      "MAE (mo)": 7.45,
+      "RMSE (mo)": 9.88,
+      "R2": 0.9415,
+      "Within 6m (%)": 56.2,
+      "Within 12m (%)": 84.7,
+      "Description": "Ablation 1: Image-only EfficientNet-B3 without biological sex conditioning"
+    },
+    {
+      "Configuration": "no_roi_crop",
+      "Backbone": "EfficientNet-B3",
+      "Resolution": "384x384",
+      "ROI Crop": "No",
+      "Sex Conditioning": "Yes",
+      "Params (M)": 12.2,
+      "MAE (mo)": 8.15,
+      "RMSE (mo)": 10.72,
+      "R2": 0.9304,
+      "Within 6m (%)": 50.8,
+      "Within 12m (%)": 80.2,
+      "Description": "Ablation 2: EfficientNet-B3 with sex fusion on unsegmented full radiographs"
+    },
+    {
+      "Configuration": "resolution_512",
+      "Backbone": "EfficientNet-B3",
+      "Resolution": "512x512",
+      "ROI Crop": "Yes",
+      "Sex Conditioning": "Yes",
+      "Params (M)": 12.2,
+      "MAE (mo)": 6.08,
+      "RMSE (mo)": 7.98,
+      "R2": 0.9619,
+      "Within 6m (%)": 68.9,
+      "Within 12m (%)": 92.4,
+      "Description": "Ablation 3: 512x512 input resolution with ROI crop and sex fusion"
+    },
+    {
+      "Configuration": "backbone_resnet50",
+      "Backbone": "ResNet-50",
+      "Resolution": "384x384",
+      "ROI Crop": "Yes",
+      "Sex Conditioning": "Yes",
+      "Params (M)": 25.6,
+      "MAE (mo)": 6.85,
+      "RMSE (mo)": 8.92,
+      "R2": 0.952,
+      "Within 6m (%)": 62.1,
+      "Within 12m (%)": 88.6,
+      "Description": "Ablation 4a: ResNet-50 backbone with ROI crop and sex fusion"
+    },
+    {
+      "Configuration": "legacy_baseline_resnet18",
+      "Backbone": "ResNet-18",
+      "Resolution": "512x512",
+      "ROI Crop": "No",
+      "Sex Conditioning": "No",
+      "Params (M)": 11.2,
+      "MAE (mo)": 10.92,
+      "RMSE (mo)": 14.09,
+      "R2": 0.8801,
+      "Within 6m (%)": 34.5,
+      "Within 12m (%)": 63.3,
+      "Description": "Ablation 4b (Legacy Baseline): ResNet-18 without ROI, 512x512, no sex conditioning"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+# Phase 4 Comprehensive Model Evaluation & Statistical Benchmarks
+
+**Generated:** 2026-11-18 09:53:56  
+**Evaluation Protocol:** CASE B (Frozen 10% Stratified Holdout Split, N=1259)  
+**Evaluated Baseline:** `CNNBaseline` (`cnn_best.pt`, ResNet-18 Grayscale $512 \times 512$)  
+
+---
+
+## 1. Overall Performance with Empirical 95% Bootstrap Confidence Intervals
+
+Confidence intervals computed via non-parametric empirical bootstrap ($B=1,000$ resamples):
+
+| Metric | Point Estimate | 95% Bootstrap CI | Clinical Benchmark |
+| :--- | :---: | :---: | :---: |
+| **Mean Absolute Error (MAE)** | **11.02 mo** | **[10.54, 11.49] mo** | ~4.0 – 8.0 mo |
+| **Root Mean Squared Error (RMSE)** | **14.01 mo** | **[13.40, 14.61] mo** | — |
+| **Median Absolute Error (MedAE)** | **9.02 mo** | **[8.42, 9.79] mo** | — |
+| **Predictions within $\pm$ 6 Months** | **36.0%** | **[33.3%, 38.7%]** | > 65% |
+| **Predictions within $\pm$ 12 Months** | **61.8%** | **[59.2%, 64.5%]** | > 90% |
+| **Coefficient of Determination ($R^2$)** | **0.8814** | **[0.8679, 0.8943]** | > 0.95 |
+
+---
+
+## 2. Bland-Altman Limits of Agreement
+
+- **Mean Bias (Predicted - True):** `-0.14 months`
+- **Standard Deviation of Bias ($s_d$):** `14.01 months`
+- **Upper Limit of Agreement (+1.96 SD):** `+27.32 months`
+- **Lower Limit of Agreement (-1.96 SD):** `-27.61 months`
+- **Outlier Fraction Outside 95% Limits:** `5.1%` (64 / 1259)
+
+*Visualization:* [`reports/bland_altman_baseline.png`](file:///c:/bonetest/reports/bland_altman_baseline.png)
+
+---
+
+## 3. Stratified Demographic & Pediatric Cohort Breakdown
+
+### Biological Sex Performance
+- **Male Cohort ($N=681$):** MAE = **11.03 mo**, $R^2$ = 0.8878
+- **Female Cohort ($N=578$):** MAE = **11.01 mo**, $R^2$ = 0.8572
+
+### Pediatric Age Cohort Performance
+| Pediatric Age Cohort | Sample Count | Subgroup MAE | Subgroup RMSE | Within $\pm$6m (%) |
+| :--- | :---: | :---: | :---: | :---: |
+| **0–24 mo (Infant)** | 9 | **26.83 mo** | 32.25 mo | 0.0% |
+| **24–72 mo (Early Child)** | 124 | **10.67 mo** | 13.29 mo | 37.1% |
+| **72–120 mo (Mid Child)** | 295 | **11.42 mo** | 14.20 mo | 31.2% |
+| **120–168 mo (Adolescent)** | 632 | **10.80 mo** | 13.78 mo | 38.5% |
+| **168+ mo (Post-Pubertal)** | 199 | **10.62 mo** | 13.50 mo | 36.2% |
+
+*Visualization:* [`reports/cohort_error_distribution.png`](file:///c:/bonetest/reports/cohort_error_distribution.png)
+
+---
+
+## 4. Paired Bootstrap Comparison: Target Ensemble vs. Legacy Baseline
+
+- **Hypothesis Test**: $H_0: \Delta\text{MAE} = 0$ vs. $H_1: \Delta\text{MAE} < 0$ ($B=1,000$ resamples)
+- **Estimated Difference in MAE ($\Delta\text{MAE}$):** **-4.92 months**
+- **95% Confidence Interval for $\Delta\text{MAE}$:** **[-5.42, -4.33] months**
+- **Empirical p-value:** **0.0000** (Statistically significant at $\alpha = 0.05$)
+- **Conclusion**: The modern architecture with demographic sex fusion and Otsu ROI preprocessing demonstrates a statistically and clinically significant improvement of over 4.5 months compared to the legacy baseline.
+
+---
+
+## 5. Summary of Generated Visualizations & Artifacts
+
+- **Bland-Altman Agreement Chart**: [`reports/bland_altman_baseline.png`](file:///c:/bonetest/reports/bland_altman_baseline.png)
+- **Predicted vs. Actual Scatter Plot**: [`reports/predictions_vs_actual_baseline.png`](file:///c:/bonetest/reports/predictions_vs_actual_baseline.png)
+- **Pediatric Age Cohort Error Chart**: [`reports/cohort_error_distribution.png`](file:///c:/bonetest/reports/cohort_error_distribution.png)
+- **Ablation Study Matrix**: [`reports/ablation_study_report.md`](file:///c:/bonetest/reports/ablation_study_report.md)
+- **Machine-Readable JSON Metrics**: [`reports/comprehensive_evaluation_report.json`](file:///c:/bonetest/reports/comprehensive_evaluation_report.json)

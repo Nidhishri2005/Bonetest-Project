@@ -1,4 +1,13 @@
-export type ModelType = "cnn" | "cnn_dnn" | "multimodal_cnn" | "cnn_rf";
+export type ModelType =
+  | "efficientnet_b3"
+  | "cnn_rf"
+  | "cnn"
+  | "cnn_dnn"
+  | "cnn_tw3"
+  | "multimodal_cnn"
+  | "regression_multimodal"
+  | "mask_rcnn"
+  | "ensemble_cnn";
 
 export interface ModelInfo {
   id: ModelType;
@@ -7,23 +16,50 @@ export interface ModelInfo {
   requires_gender: boolean;
   supports_gradcam: boolean;
   checkpoint_available: boolean;
+  is_experimental?: boolean;
+  is_legacy?: boolean;
+}
+
+export interface ValidationDetails {
+  is_valid: boolean;
+  predicted_class: string;
+  confidence: number;
+  threshold: number;
+  rejection_code?: string | null;
+  rejection_message?: string | null;
+  processing_time_ms?: number;
+  probabilities?: Record<string, number>;
 }
 
 export interface PredictionResult {
+  success?: boolean;
+  error?: string;
+  message?: string;
   model_type: string;
   bone_age_months: number;
   confidence: number;
   gender_used?: string | null;
   processing_time_ms: number;
+  uncertainty_lower_months?: number;
+  uncertainty_upper_months?: number;
+  uncertainty_interval_months?: number;
+  conformal_coverage_pct?: number;
+  inference_engine?: string;
+  validation?: ValidationDetails;
 }
 
 export interface GradCamResult {
+  success?: boolean;
+  error?: string;
+  message?: string;
   model_type: string;
   bone_age_months: number;
   confidence: number;
+  method?: string;
   heatmap_base64: string;
   overlay_base64: string;
   processing_time_ms: number;
+  validation?: ValidationDetails;
 }
 
 export interface MetricValues {

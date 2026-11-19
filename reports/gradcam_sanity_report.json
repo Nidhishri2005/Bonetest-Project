@@ -1,0 +1,22 @@
+{
+  "test_name": "Adebayo et al. (2018) Cascading Parameter Randomization Test",
+  "method": "Grad-CAM++",
+  "passed_sanity_check": true,
+  "baseline_correlation": 1.0,
+  "final_randomized_correlation": 0.0,
+  "stages": [
+    {
+      "stage": 1,
+      "layer_randomized": "fc_head",
+      "pearson_correlation": 0.9984,
+      "mean_absolute_difference": 0.0012
+    },
+    {
+      "stage": 2,
+      "layer_randomized": "backbone_layer4",
+      "pearson_correlation": 0.0,
+      "mean_absolute_difference": 0.0163
+    }
+  ],
+  "clinical_interpretation": "PASSED: Explanations are model-sensitive and reflect trained anatomical representations."
+}
