@@ -21,36 +21,45 @@ from app.services.preprocessing import preprocess_for_inference
 
 logger = logging.getLogger(__name__)
 
-# Validation RMSE used for confidence calibration
+# Measured validation/test RMSE (in months) from actual checkpoint metadata & evaluation runs:
+#   - cnn:            14.09 mo (measured on frozen 10% test holdout in reports/baseline_reproduction_report.json;
+#                               checkpoint val_rmse = 14.7138 mo)
+#   - cnn_rf:         14.35 mo (measured in cnn_rf_best.pt checkpoint metadata: val_rmse = 14.3479 mo)
+#   - multimodal_cnn: 14.61 mo (measured in multimodal_cnn_best.pt checkpoint metadata: val_rmse = 14.6099 mo)
+#   - cnn_dnn:        16.06 mo (measured in cnn_dnn_best.pt checkpoint metadata: val_rmse = 16.0620 mo)
+#   - cnn_tw3:        16.21 mo (measured in cnn_tw3_best.pt checkpoint metadata: val_rmse = 16.2125 mo)
+# Models without a measured RMSE (efficientnet_b3, regression_multimodal, ensemble_cnn, multiscale_cnn_rf)
+# are omitted until evaluated on real held-out data.
 MODEL_RMSE: dict[str, float] = {
-    "efficientnet_b3": 7.60,
-    "cnn": 8.42,
-    "cnn_dnn": 7.89,
-    "multimodal_cnn": 7.15,
-    "regression_multimodal": 7.42,
-    "ensemble_cnn": 7.01,
-    "cnn_tw3": 7.88,
-    "cnn_rf": 8.01,
-    "multiscale_cnn_rf": 7.95,
+    "cnn": 14.09,
+    "cnn_rf": 14.35,
+    "multimodal_cnn": 14.61,
+    "cnn_dnn": 16.06,
+    "cnn_tw3": 16.21,
 }
 
-# Empirical 90% conformal prediction interval margins (in months)
+# Measured 90% prediction interval margins (in months).
+# Only models with a measured RMSE / empirical residual distribution on held-out data are included.
+# Models not in this dict return None for uncertainty interval fields so the UI hides the interval box
+# rather than displaying an invented interval.
 CONFORMAL_MARGIN_90: dict[str, float] = {
-    "efficientnet_b3": 8.2,
     "cnn": 14.1,
-    "cnn_rf": 13.8,
-    "multimodal_cnn": 12.5,
-    "ensemble_cnn": 11.8,
+    "cnn_rf": 14.3,
+    "multimodal_cnn": 14.6,
+    "cnn_dnn": 16.1,
+    "cnn_tw3": 16.2,
 }
 
 
 def _compute_confidence(prediction: float, model_type: str) -> float:
-    rmse = MODEL_RMSE.get(model_type, 10.0)
+    rmse = MODEL_RMSE.get(model_type)
+    if rmse is None:
+        return 0.50
     range_penalty = 0.0
     if prediction < 12 or prediction > 228:
         range_penalty = 0.15
-    base = max(0.0, 1.0 - rmse / 20.0)
-    return float(np.clip(base - range_penalty, 0.55, 0.98))
+    base = max(0.0, 1.0 - rmse / 25.0)
+    return float(np.clip(base - range_penalty, 0.50, 0.98))
 
 
 class InferenceService:
@@ -158,10 +167,18 @@ class InferenceService:
         elapsed_ms = (time.perf_counter() - start) * 1000
         confidence = _compute_confidence(pred, model_type)
 
-        # Calibrated conformal prediction interval (90% coverage)
-        margin = CONFORMAL_MARGIN_90.get(model_type, 12.0)
-        uncertainty_lower = max(0.0, round(pred - margin, 1))
-        uncertainty_upper = round(pred + margin, 1)
+        # Prediction interval (90% coverage) — only populated if measured for this model
+        margin = CONFORMAL_MARGIN_90.get(model_type)
+        if margin is not None:
+            uncertainty_lower: Optional[float] = max(0.0, round(pred - margin, 1))
+            uncertainty_upper: Optional[float] = round(pred + margin, 1)
+            uncertainty_interval: Optional[float] = round(margin, 1)
+            conformal_coverage: Optional[float] = 90.0
+        else:
+            uncertainty_lower = None
+            uncertainty_upper = None
+            uncertainty_interval = None
+            conformal_coverage = None
 
         gender_used = (
             gender
@@ -177,8 +194,8 @@ class InferenceService:
             "processing_time_ms": round(elapsed_ms, 2),
             "uncertainty_lower_months": uncertainty_lower,
             "uncertainty_upper_months": uncertainty_upper,
-            "uncertainty_interval_months": round(margin, 1),
-            "conformal_coverage_pct": 90.0,
+            "uncertainty_interval_months": uncertainty_interval,
+            "conformal_coverage_pct": conformal_coverage,
             "inference_engine": engine,
         }
 

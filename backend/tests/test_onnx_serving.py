@@ -133,10 +133,11 @@ class TestONNXServingIntegration(unittest.TestCase):
         self.assertEqual(result["model_type"], "efficientnet_b3")
         self.assertEqual(result["gender_used"], "female")
         self.assertEqual(result["inference_engine"], "ONNXRuntime-CPU")
-        self.assertIn("uncertainty_lower_months", result)
-        self.assertIn("uncertainty_upper_months", result)
-        self.assertIn("uncertainty_interval_months", result)
-        self.assertEqual(result["conformal_coverage_pct"], 90.0)
+        # efficientnet_b3 does not have a measured interval yet, so interval fields are None
+        self.assertIsNone(result["uncertainty_lower_months"])
+        self.assertIsNone(result["uncertainty_upper_months"])
+        self.assertIsNone(result["uncertainty_interval_months"])
+        self.assertIsNone(result["conformal_coverage_pct"])
         self.assertGreaterEqual(result["bone_age_months"], 0.0)
         self.assertLessEqual(result["bone_age_months"], 240.0)
 

@@ -170,6 +170,11 @@ class TestModelArchitectures(unittest.TestCase):
             self.assertGreaterEqual(out["bone_age_months"], 24.0)
             self.assertLessEqual(out["bone_age_months"], 180.0)
             self.assertIsNone(out["gender_used"])
+            # multiscale_cnn_rf has no measured RMSE / interval yet -> interval fields must be None
+            self.assertIsNone(out["uncertainty_lower_months"])
+            self.assertIsNone(out["uncertainty_upper_months"])
+            self.assertIsNone(out["uncertainty_interval_months"])
+            self.assertIsNone(out["conformal_coverage_pct"])
 
     def test_registry_load_fails_loudly_on_state_dict_mismatch(self):
         with tempfile.TemporaryDirectory() as tmp:

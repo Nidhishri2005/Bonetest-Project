@@ -139,14 +139,18 @@ class TestClinicalPipelineEndToEnd(unittest.TestCase):
         self.assertEqual(data["gender_used"], "male")
         self.assertGreater(data["bone_age_months"], 0.0)
         self.assertLess(data["bone_age_months"], 240.0)
-
-        self.assertIn("uncertainty_lower_months", data)
-        self.assertIn("uncertainty_upper_months", data)
-        self.assertIn("uncertainty_interval_months", data)
-        self.assertEqual(data["conformal_coverage_pct"], 90.0)
-        self.assertLessEqual(data["uncertainty_lower_months"], data["bone_age_months"])
-        self.assertGreaterEqual(data["uncertainty_upper_months"], data["bone_age_months"])
         self.assertEqual(data["inference_engine"], "ONNXRuntime-CPU")
+        # Unmeasured models return None for interval rather than an invented interval
+        self.assertIsNone(data["uncertainty_lower_months"])
+        self.assertIsNone(data["uncertainty_upper_months"])
+
+        # Measured models (e.g. cnn) return their measured interval
+        cnn_data = self.inference.predict(self.hand_png, "cnn")
+        self.assertIsNotNone(cnn_data["uncertainty_lower_months"])
+        self.assertIsNotNone(cnn_data["uncertainty_upper_months"])
+        self.assertEqual(cnn_data["conformal_coverage_pct"], 90.0)
+        self.assertLessEqual(cnn_data["uncertainty_lower_months"], cnn_data["bone_age_months"])
+        self.assertGreaterEqual(cnn_data["uncertainty_upper_months"], cnn_data["bone_age_months"])
 
     def test_valid_pediatric_hand_produces_gradcam_plusplus(self):
         val_res = self.validator.validate(self.hand_png)
