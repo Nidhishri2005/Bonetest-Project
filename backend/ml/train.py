@@ -40,7 +40,6 @@ def parse_args() -> argparse.Namespace:
             "cnn_dnn",
             "multimodal_cnn",
             "regression_multimodal",
-            "mask_rcnn",
             "ensemble_cnn",
             "cnn_tw3",
             "cnn_rf",

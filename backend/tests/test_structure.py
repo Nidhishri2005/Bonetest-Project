@@ -49,7 +49,6 @@ class TestPhase1Restructure(unittest.TestCase):
             "cnn_tw3",
             "multimodal_cnn",
             "regression_multimodal",
-            "mask_rcnn",
             "ensemble_cnn",
             "cnn",
             "cnn_rf",

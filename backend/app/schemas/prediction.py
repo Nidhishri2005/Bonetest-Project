@@ -10,7 +10,6 @@ class ModelType(str, Enum):
     cnn_dnn = "cnn_dnn"
     multimodal_cnn = "multimodal_cnn"
     regression_multimodal = "regression_multimodal"
-    mask_rcnn = "mask_rcnn"
     ensemble_cnn = "ensemble_cnn"
     cnn_tw3 = "cnn_tw3"
     cnn_rf = "cnn_rf"

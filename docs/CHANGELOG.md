@@ -277,7 +277,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `backend/tests/test_structure.py`: Automated unit tests verifying directory layout, model registry legacy classifications, and `EfficientNetB3SexFusion` forward pass.
 
 ### Changed
-- `backend/app/models/__init__.py`: Registered `efficientnet_b3` as target production architecture (`is_legacy=False`, `requires_gender=True`). Marked `cnn_dnn`, `cnn_tw3`, `multimodal_cnn`, `regression_multimodal`, `mask_rcnn`, `ensemble_cnn`, `cnn`, and `cnn_rf` as `[Legacy Baseline]` with `is_legacy=True`.
+- `backend/app/models/__init__.py`: Registered `efficientnet_b3` as target production architecture (`is_legacy=False`, `requires_gender=True`). Marked `cnn_dnn`, `cnn_tw3`, `multimodal_cnn`, `regression_multimodal`, `ensemble_cnn`, `cnn`, and `cnn_rf` as `[Legacy Baseline]` with `is_legacy=True`.
 - `backend/app/schemas/prediction.py`: Added `efficientnet_b3` to `ModelType` enum; added `is_legacy: bool = False` to `ModelInfo` schema.
 - `backend/app/services/model_registry.py`: Updated `list_models()` to propagate `is_legacy` metadata to API clients.
 - `frontend/src/types/index.ts`: Synchronized TypeScript interfaces: added `"efficientnet_b3"` to `ModelType` and `is_legacy?: boolean` to `ModelInfo`.

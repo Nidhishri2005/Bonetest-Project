@@ -14,7 +14,6 @@ from app.models.cnn_dnn import CNNDNN
 from app.models.cnn_rf import CNNFeatureExtractor, CNNWithRFWrapper
 from app.models.cnn_tw3 import CNNTW3
 from app.models.ensemble_cnn import EnsembleCNN
-from app.models.mask_rcnn import MaskRCNNRegression
 from app.models.multimodal_cnn import MultimodalCNN
 from app.models.regression_multimodal import RegressionMultimodal
 from ml.models.efficientnet import EfficientNetB3SexFusion
@@ -83,15 +82,6 @@ MODEL_REGISTRY = {
         "display_name": "Regression Multimodal [Legacy Baseline]",
         "description": "Experimental multimodal deep learning network with 64-d metadata projection",
         "requires_gender": True,
-        "supports_gradcam": True,
-        "is_experimental": True,
-        "is_legacy": True,
-    },
-    "mask_rcnn": {
-        "class": MaskRCNNRegression,
-        "display_name": "Mask R-CNN Proxy [Legacy Baseline]",
-        "description": "Experimental region-guided pseudo-attention mask regressor",
-        "requires_gender": False,
         "supports_gradcam": True,
         "is_experimental": True,
         "is_legacy": True,

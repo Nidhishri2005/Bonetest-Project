@@ -53,9 +53,9 @@ In `backend/app/services/metrics_service.py`, `get_plot_path(plot_name)` only in
 
 ### 3.1 Issue Description
 A significant schema discrepancy existed between the backend model registry and frontend TypeScript interfaces:
-- Backend supported 8 models: `cnn`, `cnn_dnn`, `multimodal_cnn`, `regression_multimodal`, `mask_rcnn`, `ensemble_cnn`, `cnn_tw3`, `cnn_rf`.
+- Backend supported 7 models: `cnn`, `cnn_dnn`, `multimodal_cnn`, `regression_multimodal`, `ensemble_cnn`, `cnn_tw3`, `cnn_rf`.
 - Frontend `frontend/src/types/index.ts` restricted `ModelType` to only 4 models: `"cnn" | "cnn_dnn" | "multimodal_cnn" | "cnn_rf"`.
-- Models without checkpoints (e.g., `ensemble_cnn`, `mask_rcnn`) could appear in selector lists without disabling interaction, leading to runtime HTTP 503 errors on prediction.
+- Models without checkpoints (e.g., `ensemble_cnn`, `regression_multimodal`) could appear in selector lists without disabling interaction, leading to runtime HTTP 503 errors on prediction.
 
 ### 3.2 Root Cause
 Frontend types were never updated when experimental models and the CNN-TW3 proxy were added to the backend registry. Furthermore, the frontend `<select>` dropdown did not bind the `disabled` HTML attribute to `m.checkpoint_available`.

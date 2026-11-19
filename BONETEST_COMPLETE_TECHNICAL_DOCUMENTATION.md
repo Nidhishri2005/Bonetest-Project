@@ -26,9 +26,8 @@
     - 10.5 CNN + TW3 Skeletal Proxy (`CNNTW3`)
     - 10.6 Extended Model: Regression-Based Multimodal Deep Learning (`RegressionMultimodal`)
     - 10.7 Extended Model: Multi-Branch Ensemble CNN (`EnsembleCNN`)
-    - 10.8 Extended Model: Region-Guided Mask R-CNN Proxy Regressor (`MaskRCNNRegression`)
-    - 10.9 Experimental Model: Multiscale CNN + Random Forest (`MultiscaleCNNFeatureExtractor` + `MultiscaleCNNRFWrapper`)
-    - 10.10 Architectural Differences & Comparative Matrix
+    - 10.8 Experimental Model: Multiscale CNN + Random Forest (`MultiscaleCNNFeatureExtractor` + `MultiscaleCNNRFWrapper`)
+    - 10.9 Architectural Differences & Comparative Matrix
 11. [Training Methodology & Execution](#11-training-methodology--execution)
 12. [Model Evaluation & Comparative Analysis](#12-model-evaluation--comparative-analysis)
 13. [Explainable AI: Grad-CAM Implementation](#13-explainable-ai-grad-cam-implementation)
@@ -53,7 +52,7 @@ BoneTest addresses this challenge through an end-to-end software pipeline compos
 3. **Multimodal CNN** (late-fusion network combining 512-dimensional visual feature vectors with a 32-dimensional encoded gender metadata representation),
 4. **CNN-Random Forest** (two-stage hybrid combining deep representation learning from ResNet-18 with an ensemble of 200 non-linear decision trees via Scikit-Learn),
 5. **CNN-TW3** (dual-branch hybrid combining ResNet-18 deep spatial representations with a handcrafted heuristic proxy branch capturing image intensity, variance, edge density, and center-epiphyseal focus),
-6. Additionally discovered in the codebase: an extended **RegressionMultimodal** network, a multi-branch **Ensemble CNN**, a pseudo-attention **Mask R-CNN Proxy**, and an experimental **Multiscale CNN-RF**.
+6. Additionally discovered in the codebase: an extended **RegressionMultimodal** network, a multi-branch **Ensemble CNN**, and an experimental **Multiscale CNN-RF**.
 
 Explainability is achieved through Gradient-weighted Class Activation Mapping (**Grad-CAM**), modified specifically for continuous regression outputs. Grad-CAM visualizes spatial attributions on the final convolutional layer (`layer4[1].conv2`) and generates base64-encoded JET heatmaps overlaid onto the letterboxed radiograph. 
 
@@ -570,21 +569,7 @@ graph TD
 
 ---
 
-### 10.8 Extended Model: Region-Guided Mask R-CNN Proxy Regressor (`MaskRCNNRegression`)
-- **Source Code Location:** `backend/app/models/mask_rcnn/model.py` and `new_models.py` (lines 227–287)
-- **Concept:** Mask R-CNN requires instance segmentation ground truth (masks/boxes) which RSNA lacks. This proxy module introduces a spatial self-attention pseudo-mask to emulate region-guided attention:
-  1. Backbone extracts spatial feature map $\mathbf{x}_4 = \text{layer4}(\mathbf{x}_3) \in \mathbb{R}^{B \times 512 \times 16 \times 16}$.
-  2. A convolutional mask head evaluates proposal attention logits:
-     $$\mathbf{M}_{\text{logits}} = \text{Conv2D}(64, 1, 1)(\text{ReLU}(\text{Conv2D}(512, 64, 3, \text{pad}=1)(\mathbf{x}_4))) \in \mathbb{R}^{B \times 1 \times 16 \times 16}$$
-  3. Pseudo-mask generated via sigmoid activation: $\mathbf{M} = \sigma(\mathbf{M}_{\text{logits}})$.
-  4. Region-weighted average pooling:
-     $$\mathbf{f}_{\text{proposal}} = \frac{1}{16 \times 16} \sum_{i=1}^{16} \sum_{j=1}^{16} \left(\mathbf{x}_4 \odot \mathbf{M}\right)_{b, c, i, j} \in \mathbb{R}^{B \times 512}$$
-  5. Concatenates standard global average pooled features $\mathbf{f}_{\text{global}} \in \mathbb{R}^{B \times 512}$ with region-weighted features $\mathbf{f}_{\text{proposal}} \in \mathbb{R}^{B \times 512}$ to yield $1024$ dimensions.
-  6. Passes through dense regression head: `Linear(1024, 256) \to BatchNorm1d \to ReLU \to Dropout(0.2) \to Linear(256, 128) \to BatchNorm1d \to ReLU \to Linear(128, 1)`.
-
----
-
-### 10.9 Experimental Model: Multiscale CNN + Random Forest (`MultiscaleCNNFeatureExtractor` + `MultiscaleCNNRFWrapper`)
+### 10.8 Experimental Model: Multiscale CNN + Random Forest (`MultiscaleCNNFeatureExtractor` + `MultiscaleCNNRFWrapper`)
 - **Source Code Location:** `backend/app/models/multiscale_cnn_rf/model.py` and `new_models.py` (lines 105–160)
 - **Concept:** Concatenates hierarchical representations from early, middle, and late residual stages:
   - Early features from `layer1` ($64$ channels) $\to$ `avgpool` $\to$ `early_proj(Linear(64, 128))` $\to 128$-d
@@ -717,7 +702,6 @@ The repository contains two distinct categories of results:
 | **CNN + TW3** (`cnn_tw3`) | **12.47** | **16.21** | 262.84 | Verified (`cnn_tw3_best.pt`) | *History file omitted* | *Not in Demo JSON* | *Not in Demo JSON* |
 | **CNN + DNN** (`cnn_dnn`) | **12.53** | **16.06** | 257.99 | Verified (`cnn_dnn_best.pt`) | 21 Epochs (Early stop) | 7.89 | 9.30 |
 | **Ensemble CNN** (`ensemble_cnn`) | *NOT FOUND* | *NOT FOUND* | *NOT FOUND* | *NO CHECKPOINT* | None | *Not in Demo JSON* | *Not in Demo JSON* |
-| **Mask R-CNN Proxy** (`mask_rcnn`) | *NOT FOUND* | *NOT FOUND* | *NOT FOUND* | *NO CHECKPOINT* | None | *Not in Demo JSON* | *Not in Demo JSON* |
 | **Regression Multimodal** (`regression_multimodal`) | *NOT FOUND* | *NOT FOUND* | *NOT FOUND* | *NO CHECKPOINT* | None | *Not in Demo JSON* | *Not in Demo JSON* |
 
 *Key Findings:*
@@ -938,13 +922,13 @@ A rigorous code audit revealed the following implementation issues and limitatio
 1. **Missing Plot Artifacts Directory:**
    In `backend/metrics/evaluation_results.json` (lines 32–35), the plot endpoints point to `metrics/plots/metrics_comparison.png` and `scatter_comparison.png`. However, the directory `backend/metrics/plots/` does not exist on disk. Calling `/api/metrics/plots/metrics_comparison` currently returns an HTTP `404 Not Found`.
 2. **Missing Checkpoints for Extended Models:**
-   `backend/app/models/__init__.py` registers `ensemble_cnn`, `mask_rcnn`, and `regression_multimodal`. However, no trained `.pt` checkpoint files exist for these models in `backend/checkpoints/`. Attempting to infer with them returns HTTP `503 Service Unavailable`.
+   `backend/app/models/__init__.py` registers `ensemble_cnn` and `regression_multimodal`. However, no trained `.pt` checkpoint files exist for these models in `backend/checkpoints/`. Attempting to infer with them returns HTTP `503 Service Unavailable`.
 3. **Frontend TypeScript ModelType Discrepancy:**
    In `frontend/src/types/index.ts` (line 1), `ModelType` is restricted to:
    ```typescript
    export type ModelType = "cnn" | "cnn_dnn" | "multimodal_cnn" | "cnn_rf";
    ```
-   The backend supports 8 models. `cnn_tw3`, `ensemble_cnn`, `mask_rcnn`, and `regression_multimodal` cannot be selected in the frontend UI without TypeScript errors.
+   The backend supports 7 models. `cnn_tw3`, `ensemble_cnn`, and `regression_multimodal` cannot be selected in the frontend UI without TypeScript errors.
 4. **Grad-CAM Backpropagation on Random Forest:**
    Because Random Forest is non-differentiable, Grad-CAM on `cnn_rf` explains the sum of the CNN feature extractor outputs rather than the Random Forest's internal tree decisions.
 5. **Gender Validation Discrepancy in Grad-CAM Route:**

@@ -13,7 +13,6 @@ from app.models.cnn_dnn import CNNDNN
 from app.models.cnn_rf import CNNFeatureExtractor, CNNWithRFWrapper
 from app.models.cnn_tw3 import CNNTW3
 from app.models.ensemble_cnn import EnsembleCNN
-from app.models.mask_rcnn import MaskRCNNRegression
 from app.models.multimodal_cnn import MultimodalCNN
 from app.models.regression_multimodal import RegressionMultimodal
 from app.services.model_registry import ModelRegistry, get_registry
@@ -28,7 +27,6 @@ class TestModelArchitectures(unittest.TestCase):
             "cnn_tw3",
             "multimodal_cnn",
             "regression_multimodal",
-            "mask_rcnn",
             "ensemble_cnn",
         ]
         for m in expected_models:
@@ -36,7 +34,7 @@ class TestModelArchitectures(unittest.TestCase):
             self.assertIn(m, SUPPORTED_MODELS, f"Expected {m} in SUPPORTED_MODELS")
 
     def test_image_only_models_do_not_require_gender(self):
-        image_only = ["cnn", "cnn_rf", "cnn_dnn", "cnn_tw3", "ensemble_cnn", "mask_rcnn"]
+        image_only = ["cnn", "cnn_rf", "cnn_dnn", "cnn_tw3", "ensemble_cnn"]
         for m in image_only:
             self.assertFalse(
                 MODEL_REGISTRY[m]["requires_gender"],
@@ -62,13 +60,11 @@ class TestModelArchitectures(unittest.TestCase):
         cnn_dnn = CNNDNN(pretrained=False)
         cnn_tw3 = CNNTW3(pretrained=False)
         ensemble = EnsembleCNN(pretrained=False, num_branches=2)
-        mask_rcnn = MaskRCNNRegression(pretrained=False)
 
         self.assertEqual(cnn(batch).shape, torch.Size([2]))
         self.assertEqual(cnn_dnn(batch).shape, torch.Size([2]))
         self.assertEqual(cnn_tw3(batch).shape, torch.Size([2]))
         self.assertEqual(ensemble(batch).shape, torch.Size([2]))
-        self.assertEqual(mask_rcnn(batch).shape, torch.Size([2]))
 
     def test_forward_pass_multimodal_models(self):
         batch = torch.randn(2, 1, 64, 64)
@@ -94,7 +90,6 @@ class TestModelArchitectures(unittest.TestCase):
             MultimodalCNN(pretrained=False),
             RegressionMultimodal(pretrained=False),
             EnsembleCNN(pretrained=False, num_branches=2),
-            MaskRCNNRegression(pretrained=False),
             CNNFeatureExtractor(pretrained=False),
         ]
         for m in models_to_test:

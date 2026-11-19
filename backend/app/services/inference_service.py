@@ -27,7 +27,6 @@ MODEL_RMSE: dict[str, float] = {
     "cnn_dnn": 7.89,
     "multimodal_cnn": 7.15,
     "regression_multimodal": 7.42,
-    "mask_rcnn": 9.60,
     "ensemble_cnn": 7.01,
     "cnn_tw3": 7.88,
     "cnn_rf": 8.01,

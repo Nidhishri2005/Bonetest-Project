@@ -6,7 +6,6 @@ export type ModelType =
   | "cnn_tw3"
   | "multimodal_cnn"
   | "regression_multimodal"
-  | "mask_rcnn"
   | "ensemble_cnn";
 
 export interface ModelInfo {
