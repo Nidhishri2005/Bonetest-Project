@@ -43,37 +43,53 @@ To eliminate dangerous false predictions on out-of-distribution or non-hand imag
 Upload Image
      │
      ▼
-[Stage 1: Rule-Based Integrity Gate]
+[Stage 1: Rule-Based Integrity & Strong-Color Gate]
   ├─ Magic Bytes Signature Check (PNG, JPEG, BMP, TIFF, WebP)
   ├─ OpenCV Byte Decode & Corruption Trap
   ├─ Minimum Spatial Dimension Constraint (min 32x32)
   ├─ Aspect Ratio Bounds (0.20 <= AR <= 5.0)
-  └─ Signal Variance Std Check (rejects flat / blank images)
+  ├─ Signal Variance Std Check (std >= 1.0, rejects flat / blank images)
+  └─ Strong-Color Gate (rejects mean RGB spread > 25.0 or >20% pixels with RGB spread > 40)
      │ PASSED
      ▼
-[Stage 2: 6-Class Anatomical Classifier & OOD Predictive Entropy Gate]
-  ├─ ResNet-18 Transfer Learning Classifier (hand_validator_best.pt / hand_validator.onnx)
-  ├─ 6 Clinical Classes:
-  │   0: valid_pediatric_hand_xray    3: animal_photograph
-  │   1: non_hand_xray                4: document_or_screenshot
-  │   2: normal_photograph            5: other_unrelated
-  ├─ Normalized Shannon Predictive Entropy: H_norm(p) <= 0.75
-  └─ Confidence Gate: p(valid_pediatric_hand_xray) >= 0.80
+[Stage 2: One-Class OOD kNN (k=5, Cosine Distance) Gate]
+  ├─ Frozen ImageNet-pretrained ResNet-18 (512-d global-pooled L2-normalized features)
+  ├─ Shared Preprocessing: preprocess_validator_image (3-ch RGB, 224x224 letterbox, ImageNet norm)
+  ├─ Stratified RSNA Reference Bank (backend/checkpoints/validator_ood.npz, N_fit = 4,138)
+  │   ├─ infant_0_24: 138 (all remaining eligible)
+  │   └─ 24-72, 72-120, 120-168, 168+ mo: 1,000 each
+  ├─ Startup Integrity Check: fails loudly if validator_ood.npz is missing or config mismatches
+  └─ 99% Calibrated Threshold (on N_holdout = 500 stratified RSNA images):
+      s_knn(z) = mean of 5 smallest cosine distances <= 0.122576
      │ PASSED
      ▼
-[Stage 3: Tissue-Sensitive Anatomical Mask Coverage Gate]
-  ├─ Soft-tissue sensitive adaptive Otsu thresholding
-  ├─ Connected component labeling & noise artifact filtering
+[Stage 3: Tissue-Sensitive Anatomical Mask Coverage Gate (5% Border Ignored)]
+  ├─ Central 90%x90% ROI (ignores 5% border on all 4 sides)
+  ├─ [P2, P98] percentile contrast stretch + Otsu thresholding & connected components
   └─ Anatomical Frame Coverage Check (0.03 <= coverage <= 0.98)
      │ PASSED
      ▼
 Execute Model Inference & Grad-CAM++ Explainability
 ```
 
-### Validation Performance Benchmarks
-- **Overall Classifier Accuracy:** **97.22%**
-- **Macro Precision / Recall / F1:** **97.46% / 97.22% / 97.16%**
-- **Pediatric Hand Radiograph Subgroup:** **100.00% Precision**, **100.00% Recall**, **1.000 F1-Score** (0 false positives, 0 false negatives)
+### Measured Validation Performance & Sample Sizes
+- **Stratified Fit Set ($N_{\text{fit}} = 4,138$ real RSNA radiographs):** `138` (`0–24` mo), `1,000` (`24–72` mo), `1,000` (`72–120` mo), `1,000` (`120–168` mo), `1,000` (`168+` mo). Excludes all `230` evaluation files in `configs/validator_excluded_eval_files.json`.
+- **Stratified Held-Out Calibration Set ($N_{\text{holdout}} = 500$ real RSNA radiographs — used for threshold calibration, not independent evidence):** `25` (`0–24` mo), `119` (`24–72` mo), `119` (`72–120` mo), `119` (`120–168` mo), `118` (`168+` mo).
+  - **kNN ($k=5$, cosine) @ 99% Threshold ($\tau = 0.122576$):** **495/500 (99.00%)** accepted overall (`21/25 = 84.00%` on `0–24` mo, `118/119 = 99.16%` on `24–72` mo, `118/119 = 99.16%` on `72–120` mo, `119/119 = 100.00%` on `120–168` mo, `119/118 -> 118/118 = 100.00%` on `168+` mo).
+  - **ROC AUC (500 Held-Out RSNA vs 23 `should_reject`):** **`1.000000`** for kNN ($k=5$, cosine), **`0.999913`** for Mahalanobis (Ledoit-Wolf shrinkage $\alpha = 0.005634$).
+- **Independent Positive Test Set (`tests/validator/should_accept`, $N = 30$ real RSNA radiographs):**
+  - End-to-End (Stage 1 + Stage 2 + Stage 3): **29/30 (96.67%)** accepted, **1/30 (3.33%)** rejected (`4244.png`, 18-mo infant, rejected at Stage 2 with kNN score `0.128517 > 0.122576`).
+  - Per-bin breakdown: `3/4 (75.00%)` in `0–24` mo, `7/7 (100.00%)` in `24–72` mo, `6/6 (100.00%)` in `72–120` mo, `7/7 (100.00%)` in `120–168` mo, `6/6 (100.00%)` in `168+` mo.
+- **Negative Test Set (`tests/validator/should_reject`, $N = 23$ real negative images):**
+  - End-to-End (Stage 1 + Stage 2 + Stage 3): **23/23 (100.00%)** rejected, **0/23 (0.00%)** false accepts (`14` rejected at Stage 1 strong-color gate, `9` rejected at Stage 2 OOD kNN; all 23 also score $\ge 0.157954 > 0.122576$ in Stage 2).
+  - Category breakdown: **8/8 (100.00%)** non-hand X-rays rejected, **12/12 (100.00%)** photos and animals rejected (including **4/4** adult-hand optical photos), **3/3 (100.00%)** screenshots and documents rejected.
+- **200 RSNA Check Set (`configs/validator_excluded_eval_files.json`, $N = 200$ — used to check Stage 1/3 pass rates, not independent evidence):**
+  - End-to-End (Stage 1 + Stage 2 + Stage 3): **199/200 (99.50%)** accepted (`200/200` pass Stage 1 and Stage 2; `1/200` [`3566.png`] rejected at Stage 3 coverage with `cov = 0.0242 < 0.03`).
+
+### Validator Known Limitations
+1. **Higher Infant (0–24 Months) Rejection Rate:** Infants represent only `1.53%` (`193 / 12,611`) of the RSNA training CSV and exhibit distinct anatomical morphology (unossified carpals, wider soft-tissue proportions). Because both the fit bank (`138` infant images) and the evaluation samples (`25` held-out, `4` in `should_accept`) are small, infants are rejected more often (`21/25 = 84.00%` accepted on held-out, `3/4 = 75.00%` accepted on `should_accept`) than older age bins (`99.2%–100.0%`).
+2. **Small Negative Test Set:** The negative evaluation folder (`tests/validator/should_reject`) currently contains $N = 23$ images (`8` non-hand X-rays, `12` photos/animals including `4` optical adult-hand photos, `3` screenshots).
+3. **Untested Edge Cases (Adult Hand X-Rays & Photos of X-Ray Films):** Adult hand radiographs ($> 20$ years) and camera/smartphone photographs of physical X-ray films on lightboxes or monitors are untested unless added to `tests/validator/should_reject`.
 
 ---
 

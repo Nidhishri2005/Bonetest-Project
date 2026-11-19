@@ -2,8 +2,9 @@
 # Read by ml/ data pipelines and validator training/threshold scripts
 dataset_dir: "C:/Users/Manya/Desktop/NMAMIT/major project/BoneAgePrediction-1"
 
-# Real negative image folders for 2-class validator training & threshold selection
-# (Non-hand X-rays, natural photos, animals, documents/screenshots)
-validator_negatives_dir: "C:/bonetest/data/validator_negatives"
+# Validator negative dataset paths (D:\ does not exist on this PC; using C:\bonetest\data\validator_data)
+validator_data_root: "C:/bonetest/data/validator_data"
+validator_negatives_dir: "C:/bonetest/data/validator_data/negatives"
+validator_raw_xray_dir: "C:/bonetest/data/validator_data/raw_xray"
 validator_test_accept_dir: "C:/bonetest/tests/validator/should_accept"
 validator_test_reject_dir: "C:/bonetest/tests/validator/should_reject"

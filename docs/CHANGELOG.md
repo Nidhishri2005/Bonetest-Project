@@ -4,6 +4,32 @@ All notable changes to the BoneTest pediatric bone-age prediction project will b
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Phase 11 - One-Class OOD kNN (k=5, Cosine) Image Validator Integration] - 2026-11-19
+
+### Added & Changed
+- `ml/validator_ood.py` & `backend/checkpoints/validator_ood.npz`:
+  - Replaced the trained-negatives classifier in Stage 2 with a One-Class Out-of-Distribution (OOD) validator trained exclusively on real RSNA hand X-rays using a frozen ImageNet-pretrained `ResNet-18` (`ResNet18_Weights.DEFAULT`, 512-d global-pooled L2-normalized features) and the single shared `preprocess_validator_image` function.
+  - Fitted on a stratified RSNA sample ($N_{\text{fit}} = 4,138$: `138` in `0-24` mo, `1,000` each in `24-72`, `72-120`, `120-168`, `168+` mo) and calibrated on a separate stratified held-out set ($N_{\text{holdout}} = 500$: `25` in `0-24` mo, `119/119/119/118` across the other 4 bins), excluding all `230` evaluation files in `configs/validator_excluded_eval_files.json`.
+  - Approved production Stage 2 method and threshold: **kNN ($k=5$, cosine distance)** at the **99% held-out RSNA accept threshold (`0.122576`)**, configurable via `validator_ood_threshold` in `backend/app/core/config.py`.
+- `backend/app/services/image_validator.py`, `backend/app/main.py`, `backend/app/api/routes/prediction.py`, `backend/app/api/routes/analysis.py`:
+  - Loads `backend/checkpoints/validator_ood.npz` at application startup and fails loudly (`FileNotFoundError` / `RuntimeError`) if missing or if its saved config (`knn_k=5`, `knn_metric="cosine_distance"`, `backbone`, `feature_dim=512`, `l2_normalized=True`, `preprocess`) does not match the code.
+  - Kept Stage 1 (rules + strong-color gate) and Stage 3 (5% border ignored + $[P_2, P_{98}]$ Otsu anatomical coverage) unchanged.
+  - Both `/api/predict` and `/api/gradcam` enforce the same validator and return `reason_code`, `score`, `threshold`, `stage`, and the user-facing message `"Image does not look like a pediatric hand X-ray. Upload a clear hand/wrist radiograph."` on rejection, with technical details in `detail` and `validation`.
+- Moved legacy 2-class training/evaluation scripts and Colab notebook (`train_validator.py`, `evaluate_validator.py`, `train_validator_colab.ipynb`) to `legacy/validator_2class/`.
+- Updated `backend/tests/test_image_validator.py` and `backend/tests/test_red_team_validation.py` to test real images from `tests/validator/should_accept` ($N=30$) and `tests/validator/should_reject` ($N=23$) and to fail if `validator_ood.npz` is missing (`94/94` backend tests passing).
+
+### Measured Validator Results & Known Limitations
+- `tests/validator/should_accept` ($N = 30$ real RSNA images): **29/30 (96.67%)** accepted end-to-end (`1/30` rejected in Stage 2: infant `4244.png`, 18 mo, kNN score `0.128517 > 0.122576`).
+- `tests/validator/should_reject` ($N = 23$ real negative images: 8 non-hand X-rays, 12 photos/animals including 4 adult-hand optical photos, 3 screenshots): **23/23 (100.00%)** rejected (`14` at Stage 1 strong-color gate, `9` at Stage 2 OOD kNN; all 23 also score $\ge 0.157954 > 0.122576$ in Stage 2; ROC AUC = `1.000000` vs 500 held-out RSNA).
+- `200` RSNA check images (`configs/validator_excluded_eval_files.json`, used to check Stage 1/3 — not independent): **199/200 (99.50%)** accepted end-to-end (`200/200` pass Stage 1 & Stage 2; `3566.png` rejected at Stage 3 coverage `0.0242 < 0.03`).
+- `500` stratified held-out RSNA images (used to calibrate the 99% threshold — not independent): **495/500 (99.00%)** pass Stage 2.
+- **Known Limitations:**
+  - Infants (`0–24` months) are rejected more often (`21/25 = 84.00%` accepted on held-out, `3/4 = 75.00%` on `should_accept`) due to small sample sizes.
+  - The negative test set (`should_reject`, $N = 23$) is small.
+  - Adult hand X-rays and photographs of X-ray films are untested unless added.
+
+---
+
 ## [Phase 10 - Model Card, Documentation, Docker Hardening & Final Delivery] - 2026-11-18
 
 ### Added & Hardened

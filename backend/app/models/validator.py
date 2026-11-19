@@ -1,8 +1,8 @@
-"""2-Class Hand X-ray validation model architecture and shared preprocessing.
+"""Shared Hand X-ray validator preprocessing (and legacy 2-class classifier definition).
 
-Classifies incoming images into 2 classes:
-  0: valid_pediatric_hand_xray
-  1: other
+NOTE: Stage 2 of ImageValidator now uses the One-Class OOD kNN (k=5, cosine) validator
+in ml/validator_ood.py with preprocess_validator_image below. HandXRayValidator is kept
+as a legacy module for backward compatibility / ONNX export tests only.
 """
 
 from __future__ import annotations

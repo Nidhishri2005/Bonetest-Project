@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse, Response
 from app.models import SUPPORTED_MODELS
 from app.schemas.prediction import ComparisonResponse, EvaluationResponse, GradCamResponse, ModelType
 from app.services.gradcam_service import get_gradcam_service
-from app.services.image_validator import get_image_validator
+from app.services.image_validator import USER_REJECTION_MESSAGE, get_image_validator
 from app.services.metrics_service import get_plot_path, load_evaluation_results
 from app.services.model_registry import get_registry
 
@@ -44,10 +44,13 @@ async def generate_gradcam(
             status_code=400,
             content={
                 "success": False,
-                "error": "INVALID_IMAGE",
-                "message": "Invalid image. Please upload a pediatric hand/wrist X-ray.",
-                "detail": val_result.rejection_message
-                or "Invalid image. Please upload a pediatric hand/wrist X-ray.",
+                "error": val_result.rejection_code or "INVALID_IMAGE",
+                "reason_code": val_result.reason_code or "INVALID_IMAGE",
+                "message": USER_REJECTION_MESSAGE,
+                "score": round(val_result.score, 6) if val_result.score is not None else None,
+                "threshold": round(val_result.threshold, 6),
+                "stage": val_result.deciding_stage,
+                "detail": val_result.technical_detail or USER_REJECTION_MESSAGE,
                 "validation": val_result.to_dict(),
             },
         )

@@ -33,8 +33,16 @@ class Settings(BaseSettings):
     norm_mean: float = 0.4523
     norm_std: float = 0.2118
 
+    validator_ood_npz: Path = BASE_DIR / "checkpoints" / "validator_ood.npz"
+    validator_ood_threshold: float = 0.122576
+
     @field_validator(
-        "checkpoint_dir", "metrics_dir", "upload_dir", "rf_models_dir", mode="before"
+        "checkpoint_dir",
+        "metrics_dir",
+        "upload_dir",
+        "rf_models_dir",
+        "validator_ood_npz",
+        mode="before",
     )
     @classmethod
     def resolve_path(cls, v: Any) -> Path:

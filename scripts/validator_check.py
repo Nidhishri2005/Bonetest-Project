@@ -1,26 +1,23 @@
-"""Diagnostic script: scripts/validator_check.py
+"""Diagnostic & End-to-End Pipeline Check Script: scripts/validator_check.py
 
-Runs the ImageValidator on:
-  a) 20 random images from the RSNA training folder configured in configs/data.yaml
-  b) every image in tests/validator/should_accept and tests/validator/should_reject
+Runs the full 3-stage ImageValidator (Stage 1 rules + color gate, Stage 2 OOD kNN k=5 cosine
+at 0.122576 threshold, Stage 3 anatomical coverage with 5% border ignored) end-to-end on:
+  a) tests/validator/should_accept
+  b) tests/validator/should_reject (all files currently in it, listing each file's score)
+  c) the 200 check images from configs/validator_excluded_eval_files.json
 
-For each image prints:
-  - filename
-  - stage that decided (file/decode/variance/color/classifier/coverage)
-  - class probabilities
-  - threshold used
-  - final decision
-And if the checkpoint on disk is still the legacy 6-class checkpoint (awaiting Colab
-training of the 2-class checkpoint), reports the exact strict=True load error plus
-Stage 1 + Stage 3 pass rates on all test images.
+NOTE: The 200 check images in (c) were previously used to check Stage 1/3 pass rates, and the
+500 stratified held-out RSNA images were used to calibrate the 99% threshold (0.122576), so
+they are not independent evidence of the final rate.
 """
 
 from __future__ import annotations
 
-import random
+from collections import Counter
+import json
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import List
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
@@ -28,155 +25,11 @@ for p in (str(ROOT_DIR), str(BACKEND_DIR)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import cv2
-import numpy as np
-import torch
 import yaml
 
-from app.models.validator import CLASS_TO_IDX, IDX_TO_CLASS, VALIDATOR_CLASSES, HandXRayValidator
-from app.services.image_validator import IMAGE_MAGIC_BYTES, ImageValidator
+from app.services.image_validator import ImageValidator
 
-
-def determine_deciding_stage(validator: ImageValidator, image_bytes: bytes) -> Tuple[str, dict]:
-    """Trace exact sub-stage that decides ACCEPT or REJECT."""
-    if not image_bytes or len(image_bytes) == 0:
-        res = validator.validate(image_bytes)
-        return "stage1_file_empty", {"result": res}
-    if len(image_bytes) > 25 * 1024 * 1024:
-        res = validator.validate(image_bytes)
-        return "stage1_file_size", {"result": res}
-    if not any(image_bytes.startswith(m) for m in IMAGE_MAGIC_BYTES):
-        res = validator.validate(image_bytes)
-        return "stage1_file_magic", {"result": res}
-
-    arr = np.frombuffer(image_bytes, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if img is None:
-        res = validator.validate(image_bytes)
-        return "stage1_decode", {"result": res}
-
-    h, w = img.shape[:2]
-    if h < 32 or w < 32:
-        res = validator.validate(image_bytes)
-        return "stage1_dimensions", {"result": res}
-
-    ar = float(w) / float(h)
-    if ar < 0.20 or ar > 5.0:
-        res = validator.validate(image_bytes)
-        return "stage1_aspect_ratio", {"result": res}
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    if float(np.std(gray)) < 1.0:
-        res = validator.validate(image_bytes)
-        return "stage1_variance", {"result": res}
-
-    ok1, _, err1 = validator.stage1_rule_checks(image_bytes)
-    if not ok1:
-        res = validator.validate(image_bytes)
-        return "stage1_strong_color", {"result": res, "err1": err1}
-
-    # Check Stage 3 (5% border ignored) independently as well
-    ok3, cov3, err3 = validator.stage3_anatomical_coverage(img)
-
-    try:
-        res = validator.validate(image_bytes)
-    except Exception as exc:
-        return "stage2_checkpoint_strict_load_error", {
-            "error": str(exc),
-            "stage1_passed": ok1,
-            "stage3_passed": ok3,
-            "stage3_coverage": cov3,
-            "stage3_err": err3,
-        }
-
-    gd = res.gate_details
-    if gd.get("stage2_classifier") == "FAILED":
-        return f"stage2_classifier({res.predicted_class})", {"result": res}
-    if gd.get("stage3_coverage") == "FAILED":
-        return "stage3_anatomical_coverage", {"result": res}
-    return "stage3_accepted_all_gates", {"result": res}
-
-
-def evaluate_image_list(
-    validator: ImageValidator,
-    image_paths: List[Path],
-    section_title: str,
-) -> None:
-    print("\n" + "=" * 110)
-    print(f"SECTION: {section_title} (count={len(image_paths)})")
-    print(
-        f"Thresholds: confidence>={validator.confidence_threshold:.2f}, "
-        f"coverage in [{validator.min_coverage_ratio:.2f}, {validator.max_coverage_ratio:.2f}] (5% border ignored)"
-    )
-    print("=" * 110)
-
-    if not image_paths:
-        print("  (0 images in folder)")
-        return
-
-    accepted = 0
-    stage1_ok = 0
-    stage3_ok = 0
-    strict_ckpt_blocked = 0
-    total = len(image_paths)
-
-    for idx, p in enumerate(image_paths, 1):
-        raw_bytes = p.read_bytes()
-        stage_label, info = determine_deciding_stage(validator, raw_bytes)
-
-        if "result" in info:
-            res = info["result"]
-            decision = "ACCEPT" if res.is_valid else "REJECT"
-            if res.is_valid:
-                accepted += 1
-            print(
-                f"[{idx:02d}] file={p.name:<14} | decision={decision:<6} | "
-                f"stage={stage_label:<36} | probs={res.probabilities} | "
-                f"thr={res.threshold:.2f} | cov={res.anatomical_coverage:.4f}"
-            )
-            if not res.is_valid and res.rejection_message:
-                print(f"     reason={res.rejection_message}")
-        else:
-            strict_ckpt_blocked += 1
-            if info["stage1_passed"]:
-                stage1_ok += 1
-            if info["stage3_passed"]:
-                stage3_ok += 1
-            print(
-                f"[{idx:02d}] file={p.name:<14} | stage1_rules={'PASS' if info['stage1_passed'] else 'FAIL'} | "
-                f"stage3_cov(5%_border_ignored)={'PASS' if info['stage3_passed'] else 'FAIL'} "
-                f"(cov={info['stage3_coverage']:.4f}) | stage2={stage_label}"
-            )
-
-    print("-" * 110)
-    if strict_ckpt_blocked > 0:
-        print(
-            f"SUMMARY [{section_title}]:\n"
-            f"  - Stage 1 (Rules + Strong-Color Gate) Passed : {stage1_ok}/{total} ({stage1_ok / total * 100:.1f}%)\n"
-            f"  - Stage 3 (Coverage w/ 5% Border Ignored)    : {stage3_ok}/{total} ({stage3_ok / total * 100:.1f}%)\n"
-            f"  - Stage 2 (2-Class Classifier)               : Blocked by strict=True check ({strict_ckpt_blocked}/{total}) "
-            "because hand_validator_best.pt on disk is still the 6-class checkpoint awaiting Colab 2-class training."
-        )
-    else:
-        rate = accepted / total * 100.0
-        print(f"SUMMARY [{section_title}]: Accepted {accepted}/{total} ({rate:.1f}%), Rejected {total - accepted}/{total} ({100.0 - rate:.1f}%)")
-    print("-" * 110)
-
-
-def inspect_checkpoint(validator: ImageValidator) -> None:
-    print("=" * 110)
-    print("CHECKPOINT & 2-CLASS MODEL INSPECTION")
-    print("=" * 110)
-    pt_path = validator.checkpoint_path
-    print(f"Configured PyTorch checkpoint path : {pt_path}")
-    print(f"  exists={pt_path.exists()}  size={pt_path.stat().st_size if pt_path.exists() else 'N/A'} bytes")
-    print(f"Code VALIDATOR_CLASSES (2-class)   : {VALIDATOR_CLASSES}")
-
-    try:
-        _ = validator.model
-        print("  _load_model() strict=True status : PASSED (2-class checkpoint loaded)")
-    except Exception as exc:
-        print(f"  _load_model() strict=True status : RAISED {type(exc).__name__}: {exc}")
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".jpe", ".bmp", ".webp", ".tif", ".tiff"}
 
 
 def resolve_rsna_training_dir() -> Path | None:
@@ -195,21 +48,116 @@ def resolve_rsna_training_dir() -> Path | None:
     return None
 
 
+def evaluate_image_list(
+    validator: ImageValidator,
+    image_paths: List[Path],
+    section_title: str,
+    print_every_image: bool = True,
+) -> dict:
+    print("\n" + "=" * 116)
+    print(f"SECTION: {section_title} (Total N={len(image_paths)})")
+    print(
+        f"Thresholds: Stage 2 kNN(k=5, cosine) <= {validator.ood_threshold:.6f} | "
+        f"Stage 3 coverage in [{validator.min_coverage_ratio:.2f}, {validator.max_coverage_ratio:.2f}] (5% border ignored)"
+    )
+    print("=" * 116)
+
+    if not image_paths:
+        print("  (0 images found)")
+        return {"total": 0, "accepted": 0, "rejected": 0, "stage_counts": {}}
+
+    accepted = 0
+    rejected = 0
+    stage_counts: Counter = Counter()
+    rejection_rows = []
+
+    for idx, p in enumerate(image_paths, 1):
+        raw_bytes = p.read_bytes()
+        res = validator.validate(raw_bytes)
+        decision = "ACCEPT" if res.is_valid else "REJECT"
+
+        # Compute kNN score even if rejected in Stage 1 so every file's kNN score is listed
+        score_str = f"{res.score:.6f}" if res.score is not None else "None (Stage 1)"
+        knn_even_if_s1 = res.score
+        if knn_even_if_s1 is None:
+            import cv2
+            import numpy as np
+            arr = np.frombuffer(raw_bytes, dtype=np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is not None:
+                feat = validator.extractor.extract_single_bgr(img)
+                knn_even_if_s1 = validator.ood_validator.score_single_feature(feat)["knn_k5_cosine"]
+                score_str = f"{knn_even_if_s1:.6f} (S1 rej)"
+
+        if res.is_valid:
+            accepted += 1
+        else:
+            rejected += 1
+            stage_counts[res.deciding_stage] += 1
+            rejection_rows.append((p.name, res.deciding_stage, score_str, res.technical_detail))
+
+        if print_every_image or not res.is_valid:
+            print(
+                f"[{idx:03d}] file={p.name:<16} | decision={decision:<6} | "
+                f"deciding_stage={res.deciding_stage:<16} | kNN_score={score_str:<19} | "
+                f"thr={res.threshold:.6f} | cov={res.anatomical_coverage:.4f}"
+            )
+            if not res.is_valid and res.technical_detail:
+                print(f"      tech_detail={res.technical_detail}")
+
+    total = len(image_paths)
+    print("-" * 116)
+    print(
+        f"SUMMARY [{section_title}]:\n"
+        f"  - Accepted : {accepted}/{total} ({accepted / total * 100:.2f}%)\n"
+        f"  - Rejected : {rejected}/{total} ({rejected / total * 100:.2f}%)\n"
+        f"  - Rejections by Deciding Stage: {dict(stage_counts)}"
+    )
+    print("-" * 116)
+    return {
+        "total": total,
+        "accepted": accepted,
+        "rejected": rejected,
+        "stage_counts": dict(stage_counts),
+        "rejection_rows": rejection_rows,
+    }
+
+
 def main() -> None:
     validator = ImageValidator()
-    inspect_checkpoint(validator)
+    print("=" * 116)
+    print("ONE-CLASS OOD VALIDATOR END-TO-END PIPELINE CHECK (STAGE 1 + STAGE 2 + STAGE 3)")
+    print("=" * 116)
+    print(f"Loaded OOD NPZ           : {validator.npz_path} ({validator.npz_path.stat().st_size:,} bytes)")
+    print(f"OOD Method               : kNN (k={validator.ood_validator.knn_k}, metric={validator.ood_validator.config.get('knn_metric')})")
+    print(f"Approved 99% Threshold   : {validator.ood_threshold:.6f}")
 
+    # (a) tests/validator/should_accept
+    accept_dir = ROOT_DIR / "tests" / "validator" / "should_accept"
+    accept_files = sorted([p for p in accept_dir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS])
+    evaluate_image_list(validator, accept_files, "a) tests/validator/should_accept", print_every_image=True)
+
+    # (b) tests/validator/should_reject
+    reject_dir = ROOT_DIR / "tests" / "validator" / "should_reject"
+    reject_files = sorted([p for p in reject_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS])
+    evaluate_image_list(validator, reject_files, "b) tests/validator/should_reject", print_every_image=True)
+
+    # (c) 200 check images from configs/validator_excluded_eval_files.json
+    excl_path = ROOT_DIR / "configs" / "validator_excluded_eval_files.json"
     rsna_dir = resolve_rsna_training_dir()
-    if rsna_dir is not None:
-        all_pngs = sorted(rsna_dir.glob("*.png"))
-        rng = random.Random(42)
-        sample_20 = rng.sample(all_pngs, min(20, len(all_pngs)))
-        evaluate_image_list(validator, sample_20, f"20 Random Raw RSNA Training X-Rays ({rsna_dir})")
-
-    for sub in ("should_accept", "should_reject"):
-        d = ROOT_DIR / "tests" / "validator" / sub
-        imgs = sorted([p for p in d.iterdir() if p.is_file()]) if d.exists() else []
-        evaluate_image_list(validator, imgs, f"tests/validator/{sub}")
+    if excl_path.exists() and rsna_dir is not None:
+        with open(excl_path, "r", encoding="utf-8") as f:
+            excl = json.load(f)
+        check_200_names = excl.get("check_200_files", [])
+        check_200_paths = [rsna_dir / fn for fn in check_200_names if (rsna_dir / fn).exists()]
+        evaluate_image_list(
+            validator,
+            check_200_paths,
+            "c) 200 Check Images (configs/validator_excluded_eval_files.json - used to check Stage 1/3, not independent)",
+            print_every_image=False,
+        )
+    else:
+        print(f"\n[WARN] Could not run (c) 200 check images: excl_exists={excl_path.exists()}, rsna_dir={rsna_dir}")
 
 
 if __name__ == "__main__":

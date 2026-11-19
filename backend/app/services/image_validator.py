@@ -1,4 +1,4 @@
-"""Three-Stage Hand X-ray Image Validation Service (2-Class Real-Data Architecture).
+"""Three-Stage Hand X-ray Image Validation Service (One-Class OOD kNN Architecture).
 
 Enforces a 3-stage gatekeeper architecture BEFORE any radiograph reaches
 the bone-age prediction models or Grad-CAM services:
@@ -11,41 +11,48 @@ Stage 1: Rule-Based Integrity & Strong-Color Gate
   - Signal variance check (std >= 1.0 to reject flat, blank, solid-color images)
   - Strong-color rejection (rejects strongly colored non-radiographic images)
 
-Stage 2: 2-Class Gatekeeper Classifier (valid_pediatric_hand_xray vs other)
-  - ImageNet-pretrained ResNet-18 binary classifier (hand_validator_best.pt)
+Stage 2: One-Class OOD kNN (k=5, cosine distance) Gate
+  - Frozen ImageNet-pretrained ResNet-18 512-d global-pooled feature extractor
   - Single shared preprocessing function (preprocess_validator_image)
-  - Strict checkpoint loading (raises FileNotFoundError if missing; load_state_dict(strict=True))
-  - Confidence threshold gating: p(valid_pediatric_hand_xray) >= confidence_threshold
+  - Fitted on 4,138 stratified real RSNA hand X-rays and calibrated on 500
+    stratified held-out RSNA hand X-rays (backend/checkpoints/validator_ood.npz)
+  - Strict config validation at startup (raises if validator_ood.npz is missing or
+    its k, metric, feature extractor, or preprocessing config does not match)
+  - Rejects if kNN (k=5, cosine) score > ood_threshold (default 0.122576, 99% RSNA accept)
 
 Stage 3: Suitability & Anatomical Hand-Mask Coverage Gate (5% Border Ignored)
   - Ignores a 5% border on all 4 sides to exclude film frames / scanner edges
-  - Otsu thresholding and connected component analysis on central 90%x90% ROI
+  - Percentile contrast stretch [P2, P98] + Otsu thresholding on central 90%x90% ROI
   - Anatomical coverage ratio check (min_coverage_ratio <= coverage <= max_coverage_ratio)
 """
 
 from __future__ import annotations
 
 import logging
-import math
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
 import torch
 
 from app.core.config import Settings, get_settings
-from app.models.validator import (
-    CLASS_TO_IDX,
-    IDX_TO_CLASS,
-    VALIDATOR_CLASSES,
-    HandXRayValidator,
-    preprocess_validator_image,
-)
+from ml.validator_ood import OODValidator, ResNet18FeatureExtractor
 
 logger = logging.getLogger(__name__)
+
+USER_REJECTION_MESSAGE = (
+    "Image does not look like a pediatric hand X-ray. Upload a clear hand/wrist radiograph."
+)
+
+EXPECTED_OOD_K = 5
+EXPECTED_OOD_METRIC = "cosine_distance"
+EXPECTED_OOD_BACKBONE = "torchvision.models.resnet18(weights=ResNet18_Weights.DEFAULT)"
+EXPECTED_OOD_FEATURE_DIM = 512
+EXPECTED_OOD_PREPROCESS_SUBSTR = "preprocess_validator_image"
 
 # Magic byte signatures for supported image formats
 IMAGE_MAGIC_BYTES = {
@@ -64,9 +71,13 @@ class ValidationResult:
     predicted_class: str
     confidence: float
     threshold: float
+    score: Optional[float] = None
+    reason_code: Optional[str] = None
+    deciding_stage: str = "passed"
     probabilities: Dict[str, float] = field(default_factory=dict)
     rejection_code: Optional[str] = None
     rejection_message: Optional[str] = None
+    technical_detail: Optional[str] = None
     processing_time_ms: float = 0.0
     stage_passed: int = 0
     ood_entropy: float = 0.0
@@ -78,10 +89,14 @@ class ValidationResult:
             "is_valid": self.is_valid,
             "predicted_class": self.predicted_class,
             "confidence": round(self.confidence, 4),
-            "threshold": round(self.threshold, 4),
+            "threshold": round(self.threshold, 6),
+            "score": round(self.score, 6) if self.score is not None else None,
+            "reason_code": self.reason_code,
+            "deciding_stage": self.deciding_stage,
             "probabilities": {k: round(v, 4) for k, v in self.probabilities.items()},
             "rejection_code": self.rejection_code,
             "rejection_message": self.rejection_message,
+            "technical_detail": self.technical_detail,
             "processing_time_ms": round(self.processing_time_ms, 2),
             "stage_passed": self.stage_passed,
             "ood_entropy": round(self.ood_entropy, 4),
@@ -91,12 +106,12 @@ class ValidationResult:
 
 
 class ImageValidator:
-    """Production Three-Stage Validation Gatekeeper (2-class real-data model)."""
+    """Production Three-Stage Validation Gatekeeper (One-Class OOD kNN k=5 cosine)."""
 
     def __init__(
         self,
-        checkpoint_path: Optional[Path] = None,
-        confidence_threshold: float = 0.50,
+        npz_path: Optional[Path] = None,
+        ood_threshold: Optional[float] = None,
         min_coverage_ratio: float = 0.03,
         max_coverage_ratio: float = 0.98,
         max_mean_color_diff: float = 25.0,
@@ -104,63 +119,98 @@ class ImageValidator:
         settings: Optional[Settings] = None,
     ) -> None:
         self.settings = settings or get_settings()
-        self.confidence_threshold = confidence_threshold
+        self.ood_threshold = float(
+            ood_threshold if ood_threshold is not None else self.settings.validator_ood_threshold
+        )
+        # Keep confidence_threshold alias pointing to ood_threshold for compatibility
+        self.confidence_threshold = self.ood_threshold
         self.min_coverage_ratio = min_coverage_ratio
         self.max_coverage_ratio = max_coverage_ratio
         self.max_mean_color_diff = max_mean_color_diff
         self.max_colored_pixel_fraction = max_colored_pixel_fraction
 
-        self.checkpoint_path = Path(
-            checkpoint_path or (self.settings.checkpoint_dir / "hand_validator_best.pt")
-        )
+        self.npz_path = Path(npz_path or self.settings.validator_ood_npz)
         self._device = torch.device(
             self.settings.device
             if torch.cuda.is_available() or self.settings.device == "cpu"
             else "cpu"
         )
-        self._model: Optional[HandXRayValidator] = None
-        self._classes: List[str] = list(VALIDATOR_CLASSES)
-        self._onnx_session: Optional[Any] = None
+        self._ood_validator: Optional[OODValidator] = None
+        self._extractor: Optional[ResNet18FeatureExtractor] = None
+
+        # Load and strictly validate validator_ood.npz at startup
+        self._load_ood_validator()
 
     @property
-    def classes(self) -> List[str]:
-        if self._model is None:
-            self._load_model()
-        return self._classes
+    def ood_validator(self) -> OODValidator:
+        if self._ood_validator is None:
+            self._load_ood_validator()
+        return self._ood_validator  # type: ignore
 
     @property
-    def model(self) -> HandXRayValidator:
-        if self._model is None:
-            self._load_model()
-        return self._model  # type: ignore
+    def extractor(self) -> ResNet18FeatureExtractor:
+        if self._extractor is None:
+            self._load_ood_validator()
+        return self._extractor  # type: ignore
 
-    def _load_model(self) -> None:
-        """Load 2-class validator checkpoint strictly. Raises if missing or mismatched."""
-        if not self.checkpoint_path.exists():
+    def _load_ood_validator(self) -> None:
+        """Load validator_ood.npz strictly and verify its config matches the code."""
+        if not self.npz_path.exists():
             raise FileNotFoundError(
-                f"Validator checkpoint not found at {self.checkpoint_path}. "
-                "Refusing to fall back to random weights."
+                f"OOD validator statistics file not found at {self.npz_path}. "
+                "Refusing to start without fitted RSNA OOD statistics."
             )
 
-        torch.set_num_threads(2)
-        logger.info("Loading 2-class validator weights from %s", self.checkpoint_path)
-        ckpt = torch.load(self.checkpoint_path, map_location=self._device, weights_only=False)
-        state_dict = ckpt.get("model_state_dict", ckpt)
-        ckpt_classes = ckpt.get("classes", VALIDATOR_CLASSES)
+        logger.info("Loading One-Class OOD validator statistics from %s", self.npz_path)
+        ood = OODValidator.load(self.npz_path)
+        cfg = ood.config
 
-        if len(ckpt_classes) != len(VALIDATOR_CLASSES):
+        # Strictly verify k, metric, feature extractor, and preprocessing match code
+        if ood.knn_k != EXPECTED_OOD_K or cfg.get("knn_k") != EXPECTED_OOD_K:
             raise RuntimeError(
-                f"Validator checkpoint at {self.checkpoint_path} has {len(ckpt_classes)} classes "
-                f"({ckpt_classes}), expected {len(VALIDATOR_CLASSES)} classes ({VALIDATOR_CLASSES}). "
-                "Please replace hand_validator_best.pt with the trained 2-class checkpoint."
+                f"OOD config mismatch in {self.npz_path}: expected knn_k={EXPECTED_OOD_K}, "
+                f"got npz.knn_k={ood.knn_k}, config.knn_k={cfg.get('knn_k')}."
             )
 
-        self._classes = list(ckpt_classes)
-        model = HandXRayValidator(num_classes=len(self._classes), pretrained=False)
-        model.load_state_dict(state_dict, strict=True)
-        model.to(self._device)
-        model.eval()
-        self._model = model
+        if cfg.get("knn_metric") != EXPECTED_OOD_METRIC:
+            raise RuntimeError(
+                f"OOD config mismatch in {self.npz_path}: expected knn_metric='{EXPECTED_OOD_METRIC}', "
+                f"got '{cfg.get('knn_metric')}'."
+            )
+
+        if cfg.get("backbone") != EXPECTED_OOD_BACKBONE:
+            raise RuntimeError(
+                f"OOD config mismatch in {self.npz_path}: expected backbone='{EXPECTED_OOD_BACKBONE}', "
+                f"got '{cfg.get('backbone')}'."
+            )
+
+        if cfg.get("feature_dim") != EXPECTED_OOD_FEATURE_DIM or ood.knn_bank.shape[1] != EXPECTED_OOD_FEATURE_DIM:
+            raise RuntimeError(
+                f"OOD config mismatch in {self.npz_path}: expected feature_dim={EXPECTED_OOD_FEATURE_DIM}, "
+                f"got config.feature_dim={cfg.get('feature_dim')}, bank_dim={ood.knn_bank.shape[1]}."
+            )
+
+        preprocess_cfg = str(cfg.get("preprocess", ""))
+        if EXPECTED_OOD_PREPROCESS_SUBSTR not in preprocess_cfg:
+            raise RuntimeError(
+                f"OOD config mismatch in {self.npz_path}: expected preprocess containing "
+                f"'{EXPECTED_OOD_PREPROCESS_SUBSTR}', got '{preprocess_cfg}'."
+            )
+
+        if not bool(cfg.get("l2_normalized", False)):
+            raise RuntimeError(
+                f"OOD config mismatch in {self.npz_path}: expected l2_normalized=True."
+            )
+
+        # Ensure offline local torch cache is used if present
+        torch_cache = self.settings.checkpoint_dir / "torch_cache"
+        if torch_cache.exists():
+            os.environ.setdefault("TORCH_HOME", str(torch_cache))
+
+        if self._extractor is None:
+            self._extractor = ResNet18FeatureExtractor(device=self._device)
+
+        self._ood_validator = ood
 
     # =========================================================================
     # STAGE 1: Rule-Based Integrity & Strong-Color Gate
@@ -222,11 +272,18 @@ class ImageValidator:
 
         # Reject strongly colored images (X-rays are grayscale / near-monochromatic)
         if img.ndim == 3 and img.shape[2] >= 3:
-            b, g, r = img[:, :, 0].astype(np.float32), img[:, :, 1].astype(np.float32), img[:, :, 2].astype(np.float32)
+            b, g, r = (
+                img[:, :, 0].astype(np.float32),
+                img[:, :, 1].astype(np.float32),
+                img[:, :, 2].astype(np.float32),
+            )
             channel_spread = np.maximum(np.maximum(r, g), b) - np.minimum(np.minimum(r, g), b)
             mean_color_diff = float(np.mean(channel_spread))
             colored_pixel_frac = float(np.mean(channel_spread > 40.0))
-            if mean_color_diff > self.max_mean_color_diff or colored_pixel_frac > self.max_colored_pixel_fraction:
+            if (
+                mean_color_diff > self.max_mean_color_diff
+                or colored_pixel_frac > self.max_colored_pixel_fraction
+            ):
                 return (
                     False,
                     None,
@@ -238,54 +295,34 @@ class ImageValidator:
         return True, img, None
 
     # =========================================================================
-    # STAGE 2: 2-Class Classifier Gate (valid_pediatric_hand_xray vs other)
+    # STAGE 2: One-Class OOD kNN (k=5, cosine distance) Gate
     # =========================================================================
-    def stage2_classifier_and_ood(
+    def stage2_ood_knn(
         self, img_bgr: np.ndarray
     ) -> Tuple[bool, str, float, float, Dict[str, float], Optional[str]]:
-        """Classify radiograph with the 2-class HandXRayValidator (no entropy gate)."""
-        # Ensure strict PyTorch checkpoint validation runs first
-        pt_model = self.model
-        classes = self._classes
+        """Score image with kNN (k=5, cosine) against stratified RSNA feature bank."""
+        feat_1d = self.extractor.extract_single_bgr(img_bgr)
+        scores = self.ood_validator.score_single_feature(feat_1d)
+        knn_score = float(scores["knn_k5_cosine"])
+        mahal_score = float(scores["mahalanobis"])
 
-        tensor = preprocess_validator_image(img_bgr, target_size=224)
-        tensor = tensor.unsqueeze(0).to(self._device)
+        # Convert cosine distance [0, 2] to cosine similarity in [0, 1] for display confidence
+        cosine_similarity = float(max(0.0, min(1.0, 1.0 - knn_score)))
+        score_dict = {
+            "knn_k5_cosine": knn_score,
+            "mahalanobis": mahal_score,
+            "cosine_similarity": cosine_similarity,
+        }
 
-        with torch.no_grad():
-            probs_tensor = pt_model.predict_proba(tensor)[0]
-            probs = probs_tensor.cpu().numpy()
+        if knn_score > self.ood_threshold:
+            tech_detail = (
+                f"Stage 2 OOD kNN (k=5, cosine) rejection: score={knn_score:.6f} > "
+                f"threshold={self.ood_threshold:.6f} (mahalanobis={mahal_score:.4f})."
+            )
+            logger.info(tech_detail)
+            return False, "out_of_distribution", knn_score, cosine_similarity, score_dict, tech_detail
 
-        pred_idx = int(np.argmax(probs))
-        pred_class = classes[pred_idx]
-        pred_confidence = float(probs[pred_idx])
-
-        prob_dict = {classes[i]: float(probs[i]) for i in range(len(classes))}
-
-        # Diagnostic binary Shannon entropy in [0, 1] (logged only, not used as a rejection gate)
-        eps = 1e-12
-        shannon_entropy = -float(np.sum(probs * np.log2(probs + eps)))
-        max_entropy = math.log2(max(len(classes), 2))
-        norm_entropy = float(shannon_entropy / max_entropy)
-
-        hand_xray_class = "valid_pediatric_hand_xray"
-        hand_confidence = prob_dict.get(hand_xray_class, float(probs[0]))
-
-        if hand_confidence < self.confidence_threshold:
-            if pred_class != hand_xray_class:
-                msg = (
-                    "Invalid image. Please upload a pediatric hand/wrist X-ray. "
-                    f"(Classified as '{pred_class}' with {pred_confidence * 100:.1f}% confidence; "
-                    f"hand X-ray probability={hand_confidence * 100:.1f}% < threshold {self.confidence_threshold * 100:.0f}%)"
-                )
-            else:
-                msg = (
-                    f"Uncertain radiograph. Hand X-ray probability is {hand_confidence * 100:.1f}% "
-                    f"(minimum required: {self.confidence_threshold * 100:.0f}%). "
-                    "Please upload a clearer pediatric hand/wrist radiograph."
-                )
-            return False, pred_class, pred_confidence, norm_entropy, prob_dict, msg
-
-        return True, hand_xray_class, hand_confidence, norm_entropy, prob_dict, None
+        return True, "valid_pediatric_hand_xray", knn_score, cosine_similarity, score_dict, None
 
     # =========================================================================
     # STAGE 3: Suitability & Anatomical Hand-Mask Coverage Gate (5% Border Ignored)
@@ -323,7 +360,9 @@ class ImageValidator:
         if fg_ratio > 0.85:
             thresh = cv2.bitwise_not(thresh)
 
-        num_labels, _labels, stats, _centroids = cv2.connectedComponentsWithStats(thresh, connectivity=8)
+        num_labels, _labels, stats, _centroids = cv2.connectedComponentsWithStats(
+            thresh, connectivity=8
+        )
         if num_labels <= 1:
             return False, 0.0, "No discernible anatomical structure detected in radiograph."
 
@@ -359,38 +398,58 @@ class ImageValidator:
         ok1, img_bgr, err1 = self.stage1_rule_checks(image_bytes)
         if not ok1 or img_bgr is None:
             elapsed = (time.perf_counter() - start_time) * 1000
+            logger.info("Stage 1 rule check failed: %s", err1)
             return ValidationResult(
                 is_valid=False,
                 predicted_class="corrupted_or_invalid_format",
                 confidence=0.0,
-                threshold=self.confidence_threshold,
+                threshold=self.ood_threshold,
+                score=None,
+                reason_code="INVALID_IMAGE",
+                deciding_stage="stage1_rules",
                 rejection_code="INVALID_IMAGE",
-                rejection_message=err1 or "Invalid image file.",
+                rejection_message=USER_REJECTION_MESSAGE,
+                technical_detail=err1 or "Stage 1 rule check failed.",
                 processing_time_ms=elapsed,
                 stage_passed=0,
-                gate_details={"stage1_rules": "FAILED", "stage2_classifier": "SKIPPED", "stage3_coverage": "SKIPPED"},
+                gate_details={
+                    "deciding_stage": "stage1_rules",
+                    "reason_code": "INVALID_IMAGE",
+                    "technical_reason": err1,
+                    "stage1_rules": "FAILED",
+                    "stage2_ood_knn": "SKIPPED",
+                    "stage3_coverage": "SKIPPED",
+                },
             )
 
-        # Stage 2: 2-Class Classifier Gate
-        ok2, pred_class, confidence, entropy, prob_dict, err2 = self.stage2_classifier_and_ood(img_bgr)
+        # Stage 2: One-Class OOD kNN (k=5, cosine) Gate
+        ok2, pred_class, knn_score, cos_sim, score_dict, err2 = self.stage2_ood_knn(img_bgr)
         if not ok2:
             elapsed = (time.perf_counter() - start_time) * 1000
             return ValidationResult(
                 is_valid=False,
                 predicted_class=pred_class,
-                confidence=confidence,
-                threshold=self.confidence_threshold,
-                probabilities=prob_dict,
+                confidence=cos_sim,
+                threshold=self.ood_threshold,
+                score=knn_score,
+                reason_code="INVALID_IMAGE",
+                deciding_stage="stage2_ood_knn",
+                probabilities=score_dict,
                 rejection_code="INVALID_IMAGE",
-                rejection_message=err2 or "Invalid image content.",
+                rejection_message=USER_REJECTION_MESSAGE,
+                technical_detail=err2,
                 processing_time_ms=elapsed,
                 stage_passed=1,
-                ood_entropy=entropy,
                 gate_details={
+                    "deciding_stage": "stage2_ood_knn",
+                    "reason_code": "INVALID_IMAGE",
+                    "score": round(knn_score, 6),
+                    "threshold": round(self.ood_threshold, 6),
+                    "mahalanobis": round(score_dict["mahalanobis"], 4),
+                    "technical_reason": err2,
                     "stage1_rules": "PASSED",
-                    "stage2_classifier": "FAILED",
+                    "stage2_ood_knn": "FAILED",
                     "stage3_coverage": "SKIPPED",
-                    "ood_entropy": round(entropy, 4),
                 },
             )
 
@@ -399,23 +458,32 @@ class ImageValidator:
         elapsed = (time.perf_counter() - start_time) * 1000
 
         if not ok3:
+            logger.info("Stage 3 coverage check failed: %s", err3)
             return ValidationResult(
                 is_valid=False,
-                predicted_class=pred_class,
-                confidence=confidence,
-                threshold=self.confidence_threshold,
-                probabilities=prob_dict,
+                predicted_class="insufficient_anatomical_coverage",
+                confidence=cos_sim,
+                threshold=self.ood_threshold,
+                score=knn_score,
+                reason_code="INVALID_IMAGE",
+                deciding_stage="stage3_coverage",
+                probabilities=score_dict,
                 rejection_code="INVALID_IMAGE",
-                rejection_message=err3 or "Inadequate anatomical hand structure.",
+                rejection_message=USER_REJECTION_MESSAGE,
+                technical_detail=err3,
                 processing_time_ms=elapsed,
                 stage_passed=2,
-                ood_entropy=entropy,
                 anatomical_coverage=coverage,
                 gate_details={
-                    "stage1_rules": "PASSED",
-                    "stage2_classifier": "PASSED",
-                    "stage3_coverage": "FAILED",
+                    "deciding_stage": "stage3_coverage",
+                    "reason_code": "INVALID_IMAGE",
+                    "score": round(knn_score, 6),
+                    "threshold": round(self.ood_threshold, 6),
                     "coverage_ratio": round(coverage, 4),
+                    "technical_reason": err3,
+                    "stage1_rules": "PASSED",
+                    "stage2_ood_knn": "PASSED",
+                    "stage3_coverage": "FAILED",
                 },
             )
 
@@ -423,20 +491,24 @@ class ImageValidator:
         return ValidationResult(
             is_valid=True,
             predicted_class="valid_pediatric_hand_xray",
-            confidence=confidence,
-            threshold=self.confidence_threshold,
-            probabilities=prob_dict,
+            confidence=cos_sim,
+            threshold=self.ood_threshold,
+            score=knn_score,
+            reason_code=None,
+            deciding_stage="passed",
+            probabilities=score_dict,
             processing_time_ms=elapsed,
             stage_passed=3,
-            ood_entropy=entropy,
             anatomical_coverage=coverage,
             gate_details={
-                "stage1_rules": "PASSED",
-                "stage2_classifier": "PASSED",
-                "stage3_coverage": "PASSED",
-                "confidence": round(confidence, 4),
-                "ood_entropy": round(entropy, 4),
+                "deciding_stage": "passed",
+                "score": round(knn_score, 6),
+                "threshold": round(self.ood_threshold, 6),
+                "mahalanobis": round(score_dict["mahalanobis"], 4),
                 "coverage_ratio": round(coverage, 4),
+                "stage1_rules": "PASSED",
+                "stage2_ood_knn": "PASSED",
+                "stage3_coverage": "PASSED",
             },
         )
 

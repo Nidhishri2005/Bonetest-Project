@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -48,16 +48,26 @@ class ValidationDetails(BaseModel):
     predicted_class: str
     confidence: float
     threshold: float
+    score: Optional[float] = None
+    reason_code: Optional[str] = None
+    deciding_stage: Optional[str] = None
+    stage_passed: Optional[int] = None
+    anatomical_coverage: Optional[float] = None
     probabilities: Optional[Dict[str, float]] = None
     rejection_code: Optional[str] = None
     rejection_message: Optional[str] = None
     processing_time_ms: float = 0.0
+    gate_details: Optional[Dict[str, Any]] = None
 
 
 class InvalidImageResponse(BaseModel):
     success: bool = False
     error: str = "INVALID_IMAGE"
-    message: str = "Invalid image. Please upload a pediatric hand/wrist X-ray."
+    reason_code: str = "INVALID_IMAGE"
+    message: str = "Image does not look like a pediatric hand X-ray. Upload a clear hand/wrist radiograph."
+    score: Optional[float] = None
+    threshold: Optional[float] = None
+    stage: Optional[str] = None
     validation: Optional[ValidationDetails] = None
 
 

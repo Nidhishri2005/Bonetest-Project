@@ -9,9 +9,18 @@ A hardened, clinically-grounded pediatric bone age estimation platform built on 
 ## Key Features
 
 1. **Three-Stage Image Validation Gatekeeper**:
-   - **Stage 1 (Rules)**: Magic byte header verification, OpenCV decode integrity, dimension constraints ($h, w \ge 32$), aspect ratio filtering ($0.20 \le \text{AR} \le 5.0$), and standard deviation signal variance check ($\text{std} \ge 1.0$).
-   - **Stage 2 (6-Class Classifier & OOD Entropy)**: Deep ResNet-18 transfer learning classifier with normalized Shannon predictive entropy ($\bar{H}(p) \le 0.75$) and confidence threshold ($p \ge 0.80$). Achieves **97.22% overall accuracy** and **100% precision & recall** on pediatric hand radiographs, systematically rejecting animal photos, chest X-rays, documents, and screenshots before any model inference or Grad-CAM execution.
-   - **Stage 3 (Tissue Coverage)**: Soft-tissue sensitive adaptive Otsu thresholding with connected components isolating hand anatomy ($0.03 \le \text{coverage} \le 0.98$).
+   - **Stage 1 (Rules & Strong-Color Gate)**: Magic byte header verification, OpenCV decode integrity, dimension constraints ($h, w \ge 32$), aspect ratio filtering ($0.20 \le \text{AR} \le 5.0$), standard deviation signal variance check ($\text{std} \ge 1.0$), and strong-color rejection (`mean_rgb_spread > 25.0` or `colored_pixel_fraction > 0.20` at channel spread $> 40$).
+   - **Stage 2 (One-Class OOD kNN $k=5$ Cosine Gate)**: Frozen ImageNet-pretrained `ResNet-18` (`ResNet18_Weights.DEFAULT`) global-pooled 512-d L2-normalized feature extractor with a single shared preprocessing function (`preprocess_validator_image`: 3-channel RGB conversion, $224 \times 224$ aspect-ratio-preserving letterbox resize, ImageNet normalization). Fitted on a **stratified RSNA sample of $N_{\text{fit}} = 4,138$ real radiographs** (`138` in `0-24` mo, `1,000` each in `24-72`, `72-120`, `120-168`, `168+` mo) and calibrated at the **99% threshold ($\tau = 0.122576$)** on a **stratified held-out set of $N_{\text{holdout}} = 500$ RSNA radiographs** (`25` in `0-24` mo, `119/119/119/118` across the other 4 bins), saved in `backend/checkpoints/validator_ood.npz`.
+     - **Measured Performance & Sample Sizes:**
+       - `tests/validator/should_accept` ($N = 30$ real RSNA radiographs): **29/30 (96.67%)** accepted end-to-end (`1/30` rejected in Stage 2: infant `4244.png`, 18 mo, score `0.128517 > 0.122576`).
+       - `tests/validator/should_reject` ($N = 23$ real negative images: 8 non-hand X-rays, 8 animal/general photos, 4 adult-hand optical photos, 3 screenshots): **23/23 (100.00%)** rejected (`14` by Stage 1 strong-color gate, `9` by Stage 2 OOD kNN; all 23 also exceed the Stage 2 threshold with scores $\ge 0.157954$, yielding **ROC AUC = `1.000000`** vs. the 500 held-out RSNA set).
+       - Stratified Held-Out RSNA Set ($N = 500$, used for threshold calibration — not independent): **495/500 (99.00%)** pass Stage 2.
+       - 200 RSNA Check Images ($N = 200$, used to check Stage 1/3 — not independent): **199/200 (99.50%)** accepted end-to-end (`200/200` pass Stage 1 and Stage 2; `1/200` [`3566.png`] rejected by Stage 3 coverage at `0.0242 < 0.03`).
+     - **Known Limitations:**
+       - Infants (`0–24` months) are rejected more often than older children due to smaller training representation ($1.53\%$ of RSNA) and small evaluation sample sizes (`25` in held-out where `21/25 = 84.00%` pass at 99%, and `4` in `should_accept` where `3/4 = 75.00%` pass).
+       - The negative test set (`tests/validator/should_reject`, $N = 23$) is small.
+       - Adult hand X-rays and camera photographs of physical X-ray films are untested unless added to `tests/validator/should_reject`.
+   - **Stage 3 (Tissue Coverage w/ 5% Border Ignored)**: Central $90\% \times 90\%$ ROI (ignoring a 5% border on all sides), $[P_2, P_{98}]$ percentile contrast stretch + Otsu thresholding with connected components isolating hand anatomy ($0.03 \le \text{coverage} \le 0.98$).
 
 2. **Target Architecture (`EfficientNetB3SexFusion`)**:
    - ImageNet-pretrained EfficientNet-B3 backbone with 384x384 letterboxed input.
@@ -82,15 +91,15 @@ docker compose up --build
 
 ## Test Suite Execution
 
-The repository maintains an automated suite of **101 unit and regression tests** across 10 specialized modules:
+The repository maintains an automated suite of **94 unit and regression tests** across 10 specialized modules:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s backend/tests -v
 ```
 
 ### Test Coverage Highlights:
-- `test_image_validator.py`: 22 tests verifying magic bytes, aspect ratios, 6-class transfer learning, OOD entropy, and tissue coverage.
-- `test_red_team_validation.py`: 13 adversarial tests verifying strict refusal of animals, non-hand radiographs, documents, blank frames, and corrupted bytes.
+- `test_image_validator.py`: 15 tests verifying startup `validator_ood.npz` integrity/config checks, Stage 1 rules & strong-color rejection, Stage 2 One-Class OOD kNN ($k=5$, cosine) scoring on real RSNA (`tests/validator/should_accept`, $N=30$) and real negative images (`tests/validator/should_reject`, $N=23$), Stage 3 coverage, and prediction/Grad-CAM integration.
+- `test_red_team_validation.py`: 12 adversarial and clinical pipeline tests verifying strict refusal of real non-hand radiographs, animal/adult-hand photos, screenshots, blank frames, and corrupted bytes, plus end-to-end prediction on real RSNA radiographs.
 - `test_onnx_serving.py`: 7 tests verifying ONNX graph integrity, numerical parity ($< 10^{-4}$), and CPU serving dispatch.
 - `test_gradcam_plusplus.py`: 11 tests verifying Grad-CAM++ algorithms, hook memory cleanup, and Adebayo cascading randomization sanity checks.
 - `test_evaluation_suite.py`: 7 statistical tests verifying bootstrap 95% CIs, Bland-Altman statistics, and paired hypothesis tests.
