@@ -25,7 +25,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.models import MODEL_REGISTRY
 from app.models.cnn_rf import CNNFeatureExtractor
-from app.models.new_models import MultiscaleCNNFeatureExtractor
+from app.models.multiscale_cnn_rf import MultiscaleCNNFeatureExtractor
 from ml.augmentation import TrainAugmentation
 from ml.dataset import create_dataloaders
 from ml.preprocessing import compute_dataset_statistics, save_normalization_stats

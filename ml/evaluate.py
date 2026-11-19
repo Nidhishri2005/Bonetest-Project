@@ -26,7 +26,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.models import MODEL_REGISTRY, SUPPORTED_MODELS
 from app.models.cnn_rf import CNNFeatureExtractor, CNNWithRFWrapper
-from app.models.new_models import MultiscaleCNNFeatureExtractor, MultiscaleCNNRFWrapper
+from app.models.multiscale_cnn_rf import MultiscaleCNNFeatureExtractor, MultiscaleCNNRFWrapper
 from ml.dataset import create_dataloaders
 
 

@@ -14,7 +14,8 @@ import torch
 from app.core.config import get_settings
 from app.models.cnn_rf import CNNWithRFWrapper
 from app.models.multimodal_cnn import MultimodalCNN
-from app.models.new_models import RegressionMultimodal
+from app.models.multiscale_cnn_rf import MultiscaleCNNRFWrapper
+from app.models.regression_multimodal import RegressionMultimodal
 from app.services.model_registry import ModelRegistry, get_registry
 from app.services.preprocessing import preprocess_for_inference
 
@@ -30,6 +31,7 @@ MODEL_RMSE: dict[str, float] = {
     "ensemble_cnn": 7.01,
     "cnn_tw3": 7.88,
     "cnn_rf": 8.01,
+    "multiscale_cnn_rf": 7.95,
 }
 
 # Empirical 90% conformal prediction interval margins (in months)
@@ -141,7 +143,7 @@ class InferenceService:
             model = self.registry.load(model_type)
 
             with torch.no_grad():
-                if isinstance(model, CNNWithRFWrapper):
+                if isinstance(model, (CNNWithRFWrapper, MultiscaleCNNRFWrapper)):
                     features = model.cnn(tensor)
                     pred = model.predict_numpy(features.cpu().numpy().flatten())
                 elif isinstance(model, (MultimodalCNN, RegressionMultimodal)):

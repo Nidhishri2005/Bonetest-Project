@@ -13,6 +13,7 @@ class ModelType(str, Enum):
     ensemble_cnn = "ensemble_cnn"
     cnn_tw3 = "cnn_tw3"
     cnn_rf = "cnn_rf"
+    multiscale_cnn_rf = "multiscale_cnn_rf"
 
 
 class Gender(str, Enum):

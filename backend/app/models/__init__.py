@@ -15,6 +15,7 @@ from app.models.cnn_rf import CNNFeatureExtractor, CNNWithRFWrapper
 from app.models.cnn_tw3 import CNNTW3
 from app.models.ensemble_cnn import EnsembleCNN
 from app.models.multimodal_cnn import MultimodalCNN
+from app.models.multiscale_cnn_rf import MultiscaleCNNFeatureExtractor, MultiscaleCNNRFWrapper
 from app.models.regression_multimodal import RegressionMultimodal
 from ml.models.efficientnet import EfficientNetB3SexFusion
 
@@ -92,6 +93,16 @@ MODEL_REGISTRY = {
         "description": "Experimental multi-branch ensemble of 3 ResNet-18 regressors",
         "requires_gender": False,
         "supports_gradcam": True,
+        "is_experimental": True,
+        "is_legacy": True,
+    },
+    "multiscale_cnn_rf": {
+        "class": MultiscaleCNNFeatureExtractor,
+        "display_name": "Multiscale CNN + Random Forest [Legacy Baseline]",
+        "description": "Multiscale ResNet-18 feature extractor (layer1, layer2, layer4) paired with Scikit-Learn Random Forest regressor",
+        "requires_gender": False,
+        "supports_gradcam": True,
+        "wrapper": MultiscaleCNNRFWrapper,
         "is_experimental": True,
         "is_legacy": True,
     },

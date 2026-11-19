@@ -41,7 +41,8 @@ class ModelRegistry:
             return False
         if not self.checkpoint_path(model_type).exists():
             return False
-        if model_type == "cnn_rf" and not self.rf_path(model_type).exists():
+        meta = MODEL_REGISTRY.get(model_type, {})
+        if meta.get("wrapper") is not None and not self.rf_path(model_type).exists():
             return False
         return True
 
@@ -82,7 +83,7 @@ class ModelRegistry:
 
         checkpoint = torch.load(ckpt_path, map_location=self._device, weights_only=False)
         state_dict = checkpoint.get("model_state_dict", checkpoint)
-        model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(state_dict, strict=True)
         model.to(self._device)
         model.eval()
 

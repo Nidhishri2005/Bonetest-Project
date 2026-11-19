@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 from app.models.cnn_rf import CNNWithRFWrapper
 from app.models.multimodal_cnn import MultimodalCNN
-from app.models.new_models import RegressionMultimodal
+from app.models.regression_multimodal import RegressionMultimodal
 from app.services.inference_service import (
     InferenceService,
     get_inference_service,

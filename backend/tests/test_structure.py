@@ -52,6 +52,7 @@ class TestPhase1Restructure(unittest.TestCase):
             "ensemble_cnn",
             "cnn",
             "cnn_rf",
+            "multiscale_cnn_rf",
         ]
         for m_id in legacy_models:
             self.assertIn(m_id, model_map, f"Missing model: {m_id}")

@@ -6,7 +6,8 @@ export type ModelType =
   | "cnn_tw3"
   | "multimodal_cnn"
   | "regression_multimodal"
-  | "ensemble_cnn";
+  | "ensemble_cnn"
+  | "multiscale_cnn_rf";
 
 export interface ModelInfo {
   id: ModelType;
